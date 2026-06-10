@@ -25,6 +25,7 @@ dist-ssr
 
 # User uploads & test artifacts
 backend/uploads/
+backend/data/
 dummy.jpg
 dummy.wav
 .env

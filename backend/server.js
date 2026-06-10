@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { getPageBySlug, savePage } from './database.js';
+import { db } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -130,11 +130,11 @@ app.get('/api/health', (req, res) => {
 // Endpoint to fetch page by slug
 app.get('/api/pages/:slug', (req, res) => {
   const { slug } = req.params;
-  const page = getPageBySlug(slug);
+  const page = db.getPageBySlug(slug);
   if (!page) {
     return res.status(404).json({ error: 'Page not found' });
   }
-  res.json(page);
+  res.json({ ...page.data, status: page.status });
 });
 
 // Endpoint to draft orders
@@ -144,9 +144,8 @@ app.post('/api/orders', (req, res) => {
     return res.status(400).json({ error: 'Missing slug or data' });
   }
 
-  // Create a page with draft status
+  // Build the page data payload (stored in SQLite data column)
   const pageData = {
-    slug,
     titulo: data.titulo || '',
     dataInicio: data.dataInicio || '',
     mensagem: data.mensagem || '',
@@ -156,8 +155,6 @@ app.post('/api/orders', (req, res) => {
     emojis: data.emojis || ['❤️'],
     animacao: data.animacao || 'emoji',
     template: data.template || 'classic',
-    email: email || '',
-    status: status || 'draft',
     conquistas: data.conquistas || [],
     palavraSecreta: data.palavraSecreta || '',
     palavraSecretaDica: data.palavraSecretaDica || '',
@@ -175,7 +172,7 @@ app.post('/api/orders', (req, res) => {
   };
 
   try {
-    const saved = savePage(pageData);
+    const saved = db.savePage({ slug, email: email || '', status: status || 'draft', data: pageData });
     res.json({ success: true, page: saved });
   // eslint-disable-next-line no-unused-vars
   } catch (_err) {
