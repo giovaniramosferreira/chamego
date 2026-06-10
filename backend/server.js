@@ -80,7 +80,7 @@ O ápice do date em ${bairro} deve ser um restaurante aconchegante com iluminaç
 }
 
 // Ensure uploads folder exists
-const uploadsDir = path.join(__dirname, 'uploads');
+const uploadsDir = path.join(process.env.DATA_DIR || __dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -679,6 +679,13 @@ Gere scores realistas mas otimistas que reflitam a compatibilidade astrológica 
     res.status(500).json({ error: 'Falha ao gerar análise de compatibilidade' });
   }
 });
+
+// Em produção o Express serve o build do Vite (SPA) — mesmo origin do /api
+const distDir = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get(/^\/(?!api|uploads).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')));
+}
 
 // Start server
 app.listen(PORT, () => {
