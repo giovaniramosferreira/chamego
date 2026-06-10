@@ -35,6 +35,8 @@ export function createDb(file) {
   `);
   return {
     savePage({ slug, data, status = 'draft', email = '' }) {
+      // No upsert o status não é sobrescrito: re-salvar dados de uma página já
+      // publicada não pode despublicá-la (publicação só via publishPage).
       sqlite.prepare(`INSERT INTO pages (slug, data, status, email) VALUES (?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET data=excluded.data, email=excluded.email, updated_at=datetime('now')`)
         .run(slug, JSON.stringify(data), status, email);
@@ -42,7 +44,13 @@ export function createDb(file) {
     },
     getPageBySlug(slug) {
       const row = sqlite.prepare('SELECT * FROM pages WHERE slug = ?').get(slug);
-      return row ? { ...row, data: JSON.parse(row.data) } : null;
+      if (!row) return null;
+      try {
+        return { ...row, data: JSON.parse(row.data) };
+      } catch (e) {
+        console.error(`Página ${slug} com data corrompido:`, e.message);
+        return null;
+      }
     },
     publishPage(slug) {
       sqlite.prepare(`UPDATE pages SET status='published', updated_at=datetime('now') WHERE slug=?`).run(slug);
