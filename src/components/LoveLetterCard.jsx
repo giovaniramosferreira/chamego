@@ -10,7 +10,7 @@ export default function LoveLetterCard({ coupleData }) {
   const handleGenerateLetter = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:3001/api/ai/love-letter', {
+      const response = await fetch('/api/ai/love-letter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

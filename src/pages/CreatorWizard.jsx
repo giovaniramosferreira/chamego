@@ -74,7 +74,7 @@ export default function CreatorWizard() {
     setIsGeneratingDates(true);
     setFormError('');
     try {
-      const response = await fetch('http://localhost:3001/api/dates/suggest', {
+      const response = await fetch('/api/dates/suggest', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -107,7 +107,7 @@ export default function CreatorWizard() {
     setIsGeneratingHoroscope(true);
     setFormError('');
     try {
-      const response = await fetch('http://localhost:3001/api/horoscope/generate', {
+      const response = await fetch('/api/horoscope/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -222,7 +222,7 @@ export default function CreatorWizard() {
     }, 2800);
     
     try {
-      const response = await fetch('http://localhost:3001/api/uploads/page-audio', {
+      const response = await fetch('/api/uploads/page-audio', {
         method: 'POST',
         body: uploadData
       });
@@ -275,7 +275,7 @@ export default function CreatorWizard() {
     }, 2800);
     
     try {
-      const response = await fetch('http://localhost:3001/api/uploads/page-audio', {
+      const response = await fetch('/api/uploads/page-audio', {
         method: 'POST',
         body: uploadData
       });
@@ -291,7 +291,7 @@ export default function CreatorWizard() {
           audioUrl: data.url,
           cupidoComentario: data.cupidoComentario || ''
         }));
-        setRecordedAudioUrl(`http://localhost:3001${data.url}`);
+        setRecordedAudioUrl(data.url);
       } else {
         setFormError('Erro ao enviar arquivo de áudio.');
       }
@@ -360,7 +360,7 @@ export default function CreatorWizard() {
     });
 
     try {
-      const response = await fetch('http://localhost:3001/api/uploads/page-photo', {
+      const response = await fetch('/api/uploads/page-photo', {
         method: 'POST',
         body: uploadData
       });
@@ -392,7 +392,7 @@ export default function CreatorWizard() {
     uploadData.append('photos', file); // Multer expects 'photos' array
 
     try {
-      const response = await fetch('http://localhost:3001/api/uploads/page-photo', {
+      const response = await fetch('/api/uploads/page-photo', {
         method: 'POST',
         body: uploadData
       });
@@ -559,7 +559,7 @@ export default function CreatorWizard() {
         }
       };
 
-      const response = await fetch('http://localhost:3001/api/orders', {
+      const response = await fetch('/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -799,7 +799,7 @@ export default function CreatorWizard() {
               <div className="grid grid-cols-4 gap-2 mt-4">
                 {formData.fotos.map((url, idx) => (
                   <div key={idx} className="relative aspect-square border border-pink-200 rounded-xl overflow-hidden shadow-md shadow-pink-100/20 bg-white p-1">
-                    <img src={`http://localhost:3001${url}`} alt="polaroid" className="w-full h-full object-cover rounded-lg" />
+                    <img src={url} alt="polaroid" className="w-full h-full object-cover rounded-lg" />
                     <button 
                       onClick={() => handleRemovePhoto(idx)}
                       className="absolute -top-1 -right-1 bg-red-500 border border-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-black hover:bg-red-600 shadow cursor-pointer"
@@ -869,7 +869,7 @@ export default function CreatorWizard() {
                 {formData.conquistas.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between p-2 border border-slate-200 rounded-xl bg-white">
                     <div className="flex items-center gap-3 min-w-0">
-                      <img src={`http://localhost:3001${item.fotoUrl}`} alt="milestone" className="w-10 h-10 rounded-lg object-cover" />
+                      <img src={item.fotoUrl} alt="milestone" className="w-10 h-10 rounded-lg object-cover" />
                       <div className="min-w-0">
                         <p className="text-xs font-black text-slate-800 truncate">{item.titulo}</p>
                         <p className="text-[10px] text-slate-400 truncate mt-0.5">{item.descricao}</p>
@@ -1299,10 +1299,10 @@ export default function CreatorWizard() {
               ) : currentStep === 6 && formData.conquistas.length > 0 ? (
                 <div className="bg-white p-2 border border-pink-100 rounded-xl shadow-md rotate-[-2deg] my-2 flex-1 flex flex-col justify-between max-h-[160px]">
                   <div className="bg-slate-100 rounded overflow-hidden flex-1">
-                    <img 
-                      src={`http://localhost:3001${formData.conquistas[formData.conquistas.length - 1].fotoUrl}`} 
-                      alt="milestone" 
-                      className="w-full h-full object-cover" 
+                    <img
+                      src={formData.conquistas[formData.conquistas.length - 1].fotoUrl}
+                      alt="milestone"
+                      className="w-full h-full object-cover"
                     />
                   </div>
                   <p className="font-marker text-[8px] text-center mt-1 text-slate-700 truncate leading-none">
@@ -1314,10 +1314,10 @@ export default function CreatorWizard() {
                 <div className="bg-white p-2 border border-pink-100 rounded-xl shadow-md rotate-2 my-2 flex-1 flex flex-col justify-between max-h-[160px]">
                   <div className="bg-slate-100 rounded overflow-hidden flex-1 flex items-center justify-center">
                     {formData.fotos.length > 0 ? (
-                      <img 
-                        src={`http://localhost:3001${formData.fotos[formData.fotos.length - 1]}`} 
-                        alt="couple" 
-                        className="w-full h-full object-cover" 
+                      <img
+                        src={formData.fotos[formData.fotos.length - 1]}
+                        alt="couple"
+                        className="w-full h-full object-cover"
                       />
                     ) : (
                       <ImageIcon className="w-8 h-8 text-slate-300" />

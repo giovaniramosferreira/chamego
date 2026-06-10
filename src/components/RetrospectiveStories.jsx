@@ -56,7 +56,6 @@ function stagger(index, base = 200) {
 /* ───────────────────── photo url helper ─────────────────────────────────── */
 function photoSrc(url) {
   if (!url) return '';
-  if (url.startsWith('/uploads')) return `http://localhost:3001${url}`;
   return url;
 }
 

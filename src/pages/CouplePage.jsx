@@ -112,7 +112,7 @@ export default function CouplePage() {
   useEffect(() => {
     const fetchPage = async () => {
       try {
-        const response = await fetch(`http://localhost:3001/api/pages/${slug}`);
+        const response = await fetch(`/api/pages/${slug}`);
         if (!response.ok) throw new Error('Page not found');
         const data = await response.json();
         setCoupleData(data);
@@ -426,7 +426,7 @@ export default function CouplePage() {
       {coupleData.audioUrl && (
         <audio 
           ref={voiceAudioRef} 
-          src={coupleData.audioUrl.startsWith('http') ? coupleData.audioUrl : `http://localhost:3001${coupleData.audioUrl}`} 
+          src={coupleData.audioUrl} 
           onEnded={handleVoiceEnded}
           onTimeUpdate={handleVoiceTimeUpdate}
           onLoadedMetadata={handleVoiceLoadedMetadata}
@@ -542,9 +542,9 @@ export default function CouplePage() {
               <div className="bg-white border border-slate-200 p-5 pb-12 rounded-[32px] shadow-2xl shadow-rose-100/40 max-w-sm w-full rotate-[-1.5deg] transition-all transform hover:rotate-0">
                 <div className="bg-slate-50 aspect-square rounded-2xl overflow-hidden border border-slate-150 relative shadow-inner">
                   {coupleData.fotos.map((photo, index) => (
-                    <img 
+                    <img
                       key={index}
-                      src={`http://localhost:3001${photo}`} 
+                      src={photo}
                       alt={`slide-${index}`} 
                       className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
                         currentPhotoIndex === index ? 'opacity-100 z-10 scale-100' : 'opacity-0 z-0 scale-95'
@@ -788,8 +788,8 @@ export default function CouplePage() {
                     
                     {/* Achievement Card */}
                     <div className="bg-white border border-slate-200/70 rounded-3xl p-5 shadow-lg shadow-slate-100/50 flex flex-col sm:flex-row gap-5 hover:scale-[1.01] transition-transform">
-                      <img 
-                        src={`http://localhost:3001${item.fotoUrl}`} 
+                      <img
+                        src={item.fotoUrl}
                         alt={item.titulo} 
                         className="w-full sm:w-32 h-32 object-cover rounded-2xl border border-slate-100 flex-shrink-0 shadow-sm"
                       />
