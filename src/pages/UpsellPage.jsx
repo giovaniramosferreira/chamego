@@ -1,6 +1,6 @@
-import React from 'react';
+
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Heart, Sparkles, AlertCircle, Film, ArrowRight } from 'lucide-react';
+import { Heart, Sparkles, Film, ArrowRight } from 'lucide-react';
 
 export default function UpsellPage() {
   const [searchParams] = useSearchParams();

@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Heart, Sparkles, Loader2, Mail, RefreshCw } from 'lucide-react';
 
 export default function LoveLetterCard({ coupleData }) {
   const [cartaDeAmor, setCartaDeAmor] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRevealed, setIsRevealed] = useState(false);
-  const [isEnvelopeOpen, setIsEnvelopeOpen] = useState(false);
 
   const handleGenerateLetter = async () => {
     setIsLoading(true);
@@ -30,7 +29,7 @@ export default function LoveLetterCard({ coupleData }) {
         const data = await response.json();
         setCartaDeAmor(data.cartaDeAmor);
         // Animate envelope opening
-        setTimeout(() => setIsEnvelopeOpen(true), 300);
+        setTimeout(() => {}, 300);
         setTimeout(() => setIsRevealed(true), 800);
       }
     } catch (error) {
@@ -127,7 +126,7 @@ export default function LoveLetterCard({ coupleData }) {
             {/* Regenerate Button */}
             <div className="flex justify-center mt-5">
               <button
-                onClick={() => { setCartaDeAmor(''); setIsRevealed(false); setIsEnvelopeOpen(false); }}
+                onClick={() => { setCartaDeAmor(''); setIsRevealed(false); }}
                 className="flex items-center gap-2 text-xs font-bold text-pink-500 hover:text-pink-600 transition-colors cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" />

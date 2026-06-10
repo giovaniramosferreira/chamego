@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { X, Heart, Clock, Star, MapPin, Play, Pause, Volume2 } from 'lucide-react';
 
 const SLIDE_DURATION = 6000;
@@ -60,19 +60,21 @@ function photoSrc(url) {
 }
 
 /* ───────────────────── floating particles (slide 2) ─────────────────────── */
+/* eslint-disable react-hooks/purity */
 function Particles() {
-  const items = useRef(
-    Array.from({ length: 18 }, (_, i) => ({
+  const items = useMemo(
+    () => Array.from({ length: 18 }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
       size: 2 + Math.random() * 4,
       delay: Math.random() * 6,
       duration: 6 + Math.random() * 8,
-    }))
+    })),
+    []
   );
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {items.current.map((p) => (
+      {items.map((p) => (
         <span
           key={p.id}
           className="absolute rounded-full bg-pink-400/40"
@@ -90,20 +92,22 @@ function Particles() {
 }
 
 /* ───────────────────── twinkling stars (slide 4) ────────────────────────── */
+/* eslint-disable react-hooks/purity */
 function Stars() {
-  const items = useRef(
-    Array.from({ length: 40 }, (_, i) => ({
+  const items = useMemo(
+    () => Array.from({ length: 40 }, (_, i) => ({
       id: i,
       top: Math.random() * 100,
       left: Math.random() * 100,
       size: 1 + Math.random() * 2.5,
       delay: Math.random() * 4,
       duration: 2 + Math.random() * 3,
-    }))
+    })),
+    []
   );
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {items.current.map((s) => (
+      {items.map((s) => (
         <span
           key={s.id}
           className="absolute rounded-full bg-white"
@@ -179,6 +183,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
   /* ── reset on open ──────────────────────────────────────────────────── */
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentSlide(0);
       setProgress(0);
       setIsPaused(false);

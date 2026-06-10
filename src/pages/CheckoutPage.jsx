@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Heart, ShieldCheck, CreditCard, QrCode, Copy, Check, Sparkles, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -10,7 +10,6 @@ export default function CheckoutPage() {
   const slug = searchParams.get('slug') || '';
   const plan = searchParams.get('plan') || 'forever';
   const email = searchParams.get('email') || '';
-  const phone = searchParams.get('phone') || '';
 
   const price = plan === 'forever' ? 'R$ 39,90' : 'R$ 24,90';
   const planName = plan === 'forever' ? 'Plano Vitalício' : 'Plano Acesso 24 Horas';

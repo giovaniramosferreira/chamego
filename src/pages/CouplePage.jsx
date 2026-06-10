@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Heart, Volume2, VolumeX, Sparkles, Loader2, Music, Calendar, Moon, Trophy, Key, RotateCcw, AlertCircle, CheckCircle2, ChevronDown, Play, Pause, MapPin, Coffee, Utensils } from 'lucide-react';
+import { Heart, Volume2, VolumeX, Sparkles, Loader2, Moon, Trophy, Key, RotateCcw, AlertCircle, CheckCircle2, ChevronDown, Play, Pause, MapPin, Coffee, Utensils } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 // Simple Scroll Reveal Helper Component
@@ -141,9 +141,6 @@ export default function CouplePage() {
       const start = new Date(coupleData.dataInicio);
       const now = new Date();
       
-      let diffMs = now.getTime() - start.getTime();
-      if (diffMs < 0) diffMs = 0; // Prevent negative counters
-
       let years = now.getFullYear() - start.getFullYear();
       let months = now.getMonth() - start.getMonth();
       let days = now.getDate() - start.getDate();

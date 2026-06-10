@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { MapPin, Heart } from 'lucide-react';
 
 /* ─── seeded PRNG (Linear Congruential Generator) ─── */

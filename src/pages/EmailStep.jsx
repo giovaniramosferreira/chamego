@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Heart, Mail, Phone, ArrowRight, AlertCircle } from 'lucide-react';
 

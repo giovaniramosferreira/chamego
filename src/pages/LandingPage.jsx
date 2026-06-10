@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Star, Sparkles, MessageCircle, Mail, ChevronDown, Check, ArrowRight, BookOpen, Clock, Settings, Volume2 } from 'lucide-react';
+import { Star, ChevronDown, Check } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -128,9 +128,10 @@ export default function LandingPage() {
     if (!isDeleting && currentPhrase === fullPhrase) {
       timer = setTimeout(() => setIsDeleting(true), 2000); // Wait before delete
     } else if (isDeleting && currentPhrase === "") {
-      setIsDeleting(false);
-      setPhraseIndex((prev) => (prev + 1) % typewriterPhrases.length);
-      setTypingSpeed(300); // Delay before typing next
+      timer = setTimeout(() => {
+        setIsDeleting(false);
+        setPhraseIndex((prev) => (prev + 1) % typewriterPhrases.length);
+      }, 300);
     }
 
     return () => clearTimeout(timer);

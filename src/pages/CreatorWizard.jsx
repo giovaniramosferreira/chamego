@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, ArrowLeft, Calendar, FileText, Image as ImageIcon, Music, Play, Pause, Search, Check, Sparkles, AlertCircle, Plus, Trash2, Trophy, Key, RotateCcw, Mic, Square, UploadCloud, Wand2 } from 'lucide-react';
 
@@ -57,7 +57,6 @@ export default function CreatorWizard() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState('');
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
-  const [isGeneratingCommentary, setIsGeneratingCommentary] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('');
 
   const mediaRecorderRef = useRef(null);
@@ -528,6 +527,7 @@ export default function CreatorWizard() {
       .replace(/[^a-z0-9\s-]/g, '') 
       .trim()
       .replace(/\s+/g, '-');
+    // eslint-disable-next-line react-hooks/purity
     const uniqueSlug = `${cleanNames}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {

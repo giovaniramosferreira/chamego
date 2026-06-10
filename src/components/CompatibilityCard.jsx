@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Sparkles, Loader2, Heart, Users, MessageCircle, Compass, Zap } from 'lucide-react';
 
 function AnimatedProgress({ label, icon: Icon, value, color, delay }) {

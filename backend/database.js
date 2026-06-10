@@ -36,7 +36,7 @@ export function savePage(page) {
     const pages = getPages();
     // Check if slug already exists to update, otherwise insert
     const index = pages.findIndex(p => p.slug === page.slug);
-    
+
     const pageWithTimestamp = {
       ...page,
       updatedAt: new Date().toISOString(),
@@ -53,6 +53,6 @@ export function savePage(page) {
     return pageWithTimestamp;
   } catch (e) {
     console.error('Failed to save page:', e);
-    throw new Error('Database save failed');
+    throw new Error('Database save failed', { cause: e });
   }
 }

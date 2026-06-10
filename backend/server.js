@@ -177,7 +177,8 @@ app.post('/api/orders', (req, res) => {
   try {
     const saved = savePage(pageData);
     res.json({ success: true, page: saved });
-  } catch (err) {
+  // eslint-disable-next-line no-unused-vars
+  } catch (_err) {
     res.status(500).json({ error: 'Database save failed' });
   }
 });
@@ -647,7 +648,8 @@ Gere scores realistas mas otimistas que reflitam a compatibilidade astrológica 
           const text = claudeData.content[0].text || '';
           try {
             compatibility = JSON.parse(text);
-          } catch (parseErr) {
+          // eslint-disable-next-line no-unused-vars
+          } catch (_parseErr) {
             // Try extracting JSON from response
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
