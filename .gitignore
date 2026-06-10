@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# User uploads & test artifacts
+backend/uploads/
+dummy.jpg
+dummy.wav
+.env
