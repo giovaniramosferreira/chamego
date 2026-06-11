@@ -5,6 +5,7 @@ import {
   Search, Check, Mic, Square, UploadCloud, Plus, Trash2, Key,
   Wand2, MapPin, Loader2, AlertCircle
 } from 'lucide-react';
+import { addClaim } from '../lib/claims';
 
 const STEP_TITLES = [
   'Vocês',
@@ -478,6 +479,7 @@ export default function CreatorWizard() {
       clearInterval(stageTimer);
       if (res.ok && data.slug) {
         sessionStorage.setItem('chamego-slug', data.slug);
+        if (data.claimToken) addClaim(data.slug, data.claimToken);
         audioRef.current?.pause();
         navigate(`/criar/checkout?slug=${data.slug}`);
       } else {

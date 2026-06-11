@@ -21,6 +21,8 @@ export function createDb(file) {
       data TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'draft',
       email TEXT DEFAULT '',
+      claim_token TEXT DEFAULT '',
+      owner_email TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -32,14 +34,33 @@ export function createDb(file) {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS users (
+      email TEXT PRIMARY KEY,
+      name TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      picture TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS login_tokens (
+      token TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      claims TEXT DEFAULT '[]',
+      expires_at TEXT NOT NULL,
+      used_at TEXT
+    );
   `);
+  // Migração de bancos antigos sem as colunas de Reivindicação
+  for (const col of ['claim_token', 'owner_email']) {
+    try { sqlite.exec(`ALTER TABLE pages ADD COLUMN ${col} TEXT DEFAULT ''`); } catch { /* coluna já existe */ }
+  }
   return {
-    savePage({ slug, data, status = 'draft', email = '' }) {
+    savePage({ slug, data, status = 'draft', email = '', claimToken = '' }) {
       // No upsert o status não é sobrescrito: re-salvar dados de uma página já
       // publicada não pode despublicá-la (publicação só via publishPage).
-      sqlite.prepare(`INSERT INTO pages (slug, data, status, email) VALUES (?, ?, ?, ?)
+      // claim_token e owner_sub também não: só nascem no INSERT / via claimPage.
+      sqlite.prepare(`INSERT INTO pages (slug, data, status, email, claim_token) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET data=excluded.data, email=excluded.email, updated_at=datetime('now')`)
-        .run(slug, JSON.stringify(data), status, email);
+        .run(slug, JSON.stringify(data), status, email, claimToken);
       return this.getPageBySlug(slug);
     },
     getPageBySlug(slug) {
@@ -53,7 +74,58 @@ export function createDb(file) {
       }
     },
     publishPage(slug) {
-      sqlite.prepare(`UPDATE pages SET status='published', updated_at=datetime('now') WHERE slug=?`).run(slug);
+      // Não reverte Despublicação: webhook atrasado/reenviado do MP não pode
+      // recolocar no ar uma página que o dono escondeu.
+      sqlite.prepare(`UPDATE pages SET status='published', updated_at=datetime('now') WHERE slug=? AND status != 'unpublished'`).run(slug);
+    },
+    claimPage({ slug, claimToken, ownerEmail }) {
+      // Token é a prova de posse; Rascunho não é reivindicável (claim só pós-pagamento).
+      const r = sqlite.prepare(`UPDATE pages SET owner_email=?, updated_at=datetime('now')
+        WHERE slug=? AND claim_token=? AND claim_token != '' AND status != 'draft'`)
+        .run(ownerEmail, slug, claimToken);
+      return r.changes > 0;
+    },
+    listPagesByOwner(email) {
+      return sqlite.prepare(`SELECT slug, status, data, created_at FROM pages WHERE owner_email=? ORDER BY created_at DESC`).all(email)
+        .map(r => {
+          let titulo = '';
+          try { titulo = JSON.parse(r.data).titulo || ''; } catch { /* ignora corrompido */ }
+          return { slug: r.slug, titulo, status: r.status, criadaEm: r.created_at };
+        });
+    },
+    unpublishPage(slug, ownerEmail) {
+      const r = sqlite.prepare(`UPDATE pages SET status='unpublished', updated_at=datetime('now')
+        WHERE slug=? AND owner_email=? AND owner_email != '' AND status='published'`).run(slug, ownerEmail);
+      return r.changes > 0;
+    },
+    republishPage(slug, ownerEmail) {
+      const r = sqlite.prepare(`UPDATE pages SET status='published', updated_at=datetime('now')
+        WHERE slug=? AND owner_email=? AND owner_email != '' AND status='unpublished'`).run(slug, ownerEmail);
+      return r.changes > 0;
+    },
+    upsertUser({ email, name = '', picture = '' }) {
+      sqlite.prepare(`INSERT INTO users (email, name, picture) VALUES (?, ?, ?)
+        ON CONFLICT(email) DO UPDATE SET name=CASE WHEN excluded.name != '' THEN excluded.name ELSE name END,
+          picture=CASE WHEN excluded.picture != '' THEN excluded.picture ELSE picture END`)
+        .run(email, name, picture);
+      return this.getUser(email);
+    },
+    getUser(email) { return sqlite.prepare('SELECT * FROM users WHERE email = ?').get(email); },
+    setUserPhone(email, phone) {
+      sqlite.prepare('UPDATE users SET phone=? WHERE email=?').run(phone, email);
+    },
+    createLoginToken({ token, email, claims = [], expiresAt }) {
+      sqlite.prepare('INSERT INTO login_tokens (token, email, claims, expires_at) VALUES (?, ?, ?, ?)')
+        .run(token, email, JSON.stringify(claims), expiresAt);
+    },
+    consumeLoginToken(token) {
+      // Uso único: marca used_at na mesma operação que valida.
+      const row = sqlite.prepare(`SELECT * FROM login_tokens WHERE token=? AND used_at IS NULL AND expires_at > datetime('now')`).get(token);
+      if (!row) return null;
+      sqlite.prepare(`UPDATE login_tokens SET used_at=datetime('now') WHERE token=?`).run(token);
+      let claims = [];
+      try { claims = JSON.parse(row.claims); } catch { /* ignora corrompido */ }
+      return { email: row.email, claims };
     },
     uniqueSlug(titulo) {
       const base = slugify(titulo);
@@ -77,6 +149,10 @@ export function createDb(file) {
     },
     listPayments() {
       return sqlite.prepare('SELECT * FROM payments ORDER BY created_at DESC').all();
+    },
+    // Só para testes: lê o último token de login pendente de um email
+    _rawLoginToken(email) {
+      return sqlite.prepare('SELECT token FROM login_tokens WHERE email=? AND used_at IS NULL ORDER BY rowid DESC').get(email)?.token;
     },
   };
 }

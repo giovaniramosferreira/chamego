@@ -5,6 +5,7 @@ import confetti from 'canvas-confetti';
 import CompatibilityCard from '../components/CompatibilityCard';
 import RetrospectiveStories from '../components/RetrospectiveStories';
 import StarMapCard from '../components/StarMapCard';
+import ClaimBanner from '../components/ClaimBanner';
 
 /* ─────────────────────── ScrollReveal ───────────────────────── */
 function ScrollReveal({ children }) {
@@ -395,6 +396,7 @@ export default function CouplePage() {
 
   return (
     <div className="min-h-screen bg-cream-50 text-ink-900 font-sans relative overflow-x-hidden">
+      <ClaimBanner />
       {/* Hidden audio elements */}
       <audio ref={audioRef} />
       {coupleData.audioUrl && (

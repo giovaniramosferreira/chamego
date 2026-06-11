@@ -16,7 +16,6 @@ export default function CheckoutPage() {
   const [stage, setStage] = useState('form');
 
   // form state
-  const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -95,7 +94,7 @@ export default function CheckoutPage() {
       const res = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, email: email.trim() || undefined }),
+        body: JSON.stringify({ slug }),
       });
       const data = await res.json();
 
@@ -228,22 +227,6 @@ export default function CheckoutPage() {
                   {pricing ? brl(pricing.precoFinal) : 'R$ —'}
                 </span>
               </div>
-            </div>
-
-            {/* Optional email */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="checkout-email" className="text-sm text-ink-600">
-                E-mail <span className="text-ink-400">(opcional) — para recibo</span>
-              </label>
-              <input
-                id="checkout-email"
-                type="email"
-                inputMode="email"
-                className="input-base"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
             </div>
 
             {formError && (
@@ -394,6 +377,19 @@ export default function CheckoutPage() {
             >
               Ver nossa página
             </button>
+
+            {/* Reivindicação: vincula a página a uma conta pra poder gerenciá-la */}
+            <div className="pt-4 border-t border-ink-900/10 w-full flex flex-col gap-2">
+              <p className="text-xs text-ink-400">
+                Quer poder tirar a página do ar quando quiser?
+              </p>
+              <button
+                onClick={() => navigate('/minhas-paginas')}
+                className="btn-ghost w-full text-sm"
+              >
+                Gerenciar sua página
+              </button>
+            </div>
           </div>
         )}
       </main>

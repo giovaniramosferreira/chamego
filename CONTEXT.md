@@ -41,7 +41,26 @@ Texto de IA curto (3 estrofes) que substitui a antiga carta de amor longa.
 _Avoid_: carta de amor (formato antigo, extenso)
 
 **Exclusão**:
-Remoção da Página do Casal a pedido do Criador, feita manualmente via suporte no WhatsApp (sem login/self-service por enquanto).
+Remoção definitiva da Página do Casal (dados e fotos), feita manualmente via suporte no WhatsApp. Não confundir com **Despublicação** (self-service, reversível).
+
+**Login do Criador**:
+Autenticação do Criador por conta Google ou por **Link Mágico** enviado ao email. Não existe senha. A identidade é o email verificado — os dois métodos levam à mesma conta. Não é exigido para criar ou pagar a página — só para gerenciá-la. Celular é campo opcional de contato (nunca usado para login).
+_Avoid_: cadastro (conflita com Wizard), conta, registro, senha
+
+**Link Mágico**:
+Email com link de uso único e validade curta que autentica o Criador ao ser clicado, em qualquer navegador.
+_Avoid_: código, OTP
+
+**Reivindicação**:
+Vínculo entre a Página do Casal e a conta do Criador, oferecido após o pagamento ("Gerenciar sua página"). A prova de posse nasce no navegador onde a página foi criada e viaja junto do Login do Criador; página nunca reivindicada (ex.: navegador limpo antes) fica órfã e cai no fallback de suporte via WhatsApp.
+_Avoid_: claim
+
+**Minhas Páginas**:
+Painel onde o Criador logado vê as páginas que reivindicou e pode Despublicar/Republicar.
+
+**Despublicação**:
+O Criador tira a Página do Casal do ar mantendo todos os dados; o link passa a se comportar como se a página não existisse (sem revelar que está escondida). Reversível pelo próprio Criador (**Republicação**), pois o Plano Vitalício é direito permanente.
+_Avoid_: exclusão, apagar (sugerem remoção definitiva)
 
 ## Relationships
 
@@ -49,6 +68,9 @@ Remoção da Página do Casal a pedido do Criador, feita manualmente via suporte
 - Toda **Página do Casal** nasce como **Rascunho**; vira pública apenas via **Publicação**
 - **Publicação** ocorre exclusivamente após pagamento Pix confirmado (webhook Mercado Pago)
 - O **Roteiro de Dates** pertence a uma **Página do Casal** e é gerado a partir da localização escolhida no **Wizard**
+- Após a **Publicação**, o **Criador** pode fazer a **Reivindicação** da página com o **Login do Criador**
+- Só páginas reivindicadas aparecem em **Minhas Páginas**; órfãs dependem do suporte (WhatsApp)
+- **Despublicação** e **Republicação** são liga/desliga do Criador; **Exclusão** é definitiva e manual
 
 ## Example dialogue
 

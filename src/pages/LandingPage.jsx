@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import ClaimBanner from '../components/ClaimBanner';
 import heroImg from '../assets/hero.jpg';
 import imgLua from '../assets/scenes/lua.jpg';
 import imgConquistas from '../assets/scenes/conquistas.jpg';
@@ -160,6 +161,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-cream-50 text-ink-900 font-sans pb-24 md:pb-0">
       <Header />
+      <ClaimBanner />
 
       {/* ── Returning-user banner ── */}
       {lastPage && (

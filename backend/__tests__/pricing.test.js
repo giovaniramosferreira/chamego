@@ -25,5 +25,5 @@ it('GET /api/config expõe o preço vigente', async () => {
   process.env.DISCOUNT_PERCENT = '50';
   const res = await request(app).get('/api/config');
   expect(res.status).toBe(200);
-  expect(res.body).toEqual({ precoCheio: 19.9, descontoPercent: 50, precoFinal: 9.95 });
+  expect(res.body).toMatchObject({ precoCheio: 19.9, descontoPercent: 50, precoFinal: 9.95 });
 });

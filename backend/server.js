@@ -3,8 +3,11 @@ import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { db } from './db.js';
+import { verifyGoogleToken, createSession, sessionFromRequest, normalizeEmail, SESSION_COOKIE, SESSION_MAX_AGE_MS } from './auth.js';
+import { sendMagicLink } from './mailer.js';
 import { generateCupido, generateDatePitch, generatePageContent } from './ai.js';
 import { buildRoteiro, autocomplete, photoStream } from './places.js';
 import { createPixPayment, getPayment, getPricing, PRICE } from './payments.js';
@@ -73,7 +76,122 @@ app.get('/api/health', (req, res) => {
 
 // Preço e desconto vigentes (DISCOUNT_PERCENT no servidor)
 app.get('/api/config', (req, res) => {
-  res.json(getPricing());
+  res.json({ ...getPricing(), googleClientId: process.env.GOOGLE_CLIENT_ID || '' });
+});
+
+/* ── Login do Criador + Reivindicação ───────────────────────────────────── */
+
+function setSessionCookie(res, token) {
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_MAX_AGE_MS,
+  });
+}
+
+function requireAuth(req, res, next) {
+  const user = sessionFromRequest(req);
+  if (!user) return res.status(401).json({ error: 'Faça login para continuar' });
+  req.user = user;
+  next();
+}
+
+// Executa Reivindicações enviadas junto do login. Token inválido é ignorado
+// em silêncio (página pode já ter sido reivindicada ou ser de outro navegador).
+function runClaims(claims, email) {
+  const claimed = [];
+  for (const c of Array.isArray(claims) ? claims : []) {
+    if (c?.slug && c?.token && db.claimPage({ slug: c.slug, claimToken: c.token, ownerEmail: email })) {
+      claimed.push(c.slug);
+    }
+  }
+  return claimed;
+}
+
+// Login com Google (ID token do Google Identity Services)
+app.post('/api/auth/google', async (req, res) => {
+  const { credential, claims } = req.body || {};
+  if (!credential) return res.status(400).json({ error: 'Credencial ausente' });
+  const g = await verifyGoogleToken(credential);
+  if (!g) return res.status(401).json({ error: 'Login Google inválido' });
+  db.upsertUser(g);
+  setSessionCookie(res, createSession(g));
+  res.json({ email: g.email, name: g.name, picture: g.picture, claimed: runClaims(claims, g.email) });
+});
+
+// Pede Link Mágico por email. Claims viajam junto: o clique pode acontecer em
+// outro navegador (in-app browser do app de email) e a Reivindicação ainda funciona.
+const lastMagicRequest = new Map(); // email -> timestamp (rate limit simples)
+app.post('/api/auth/email', async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email inválido' });
+  const last = lastMagicRequest.get(email) || 0;
+  if (Date.now() - last < 60_000) return res.status(429).json({ error: 'Aguarde um minuto antes de pedir outro link' });
+  lastMagicRequest.set(email, Date.now());
+  try {
+    const token = crypto.randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    db.createLoginToken({ token, email, claims: req.body?.claims || [], expiresAt });
+    const base = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+    await sendMagicLink(email, `${base}/api/auth/magic?t=${token}`);
+    res.json({ sent: true });
+  } catch (e) {
+    console.error('magic link error', e);
+    res.status(502).json({ error: 'Não conseguimos enviar o email agora. Tente de novo.' });
+  }
+});
+
+// Clique no Link Mágico: valida, loga, reivindica e leva pra Minhas Páginas.
+app.get('/api/auth/magic', (req, res) => {
+  const data = db.consumeLoginToken(String(req.query.t || ''));
+  if (!data) return res.redirect('/minhas-paginas?erro=link-invalido');
+  db.upsertUser({ email: data.email });
+  setSessionCookie(res, createSession({ email: data.email }));
+  runClaims(data.claims, data.email);
+  res.redirect('/minhas-paginas');
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie(SESSION_COOKIE);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const user = sessionFromRequest(req);
+  if (!user) return res.status(401).json({ error: 'Não logado' });
+  const u = db.getUser(user.email) || {};
+  res.json({ email: user.email, name: u.name || user.name || '', phone: u.phone || '', picture: u.picture || '' });
+});
+
+// Celular: campo opcional de contato (nunca usado para login)
+app.post('/api/auth/phone', requireAuth, (req, res) => {
+  const phone = String(req.body?.phone || '').trim().slice(0, 30);
+  db.upsertUser({ email: req.user.email });
+  db.setUserPhone(req.user.email, phone);
+  res.json({ ok: true, phone });
+});
+
+// Reivindicação avulsa (Criador já logado, token ainda no navegador de criação)
+app.post('/api/pages/:slug/claim', requireAuth, (req, res) => {
+  const ok = db.claimPage({ slug: req.params.slug, claimToken: String(req.body?.claimToken || ''), ownerEmail: req.user.email });
+  if (!ok) return res.status(404).json({ error: 'Página não encontrada ou token inválido' });
+  res.json({ claimed: true, slug: req.params.slug });
+});
+
+app.get('/api/my-pages', requireAuth, (req, res) => {
+  res.json({ pages: db.listPagesByOwner(req.user.email) });
+});
+
+// Despublicação/Republicação: liga/desliga do dono (Plano Vitalício = direito permanente)
+app.post('/api/pages/:slug/unpublish', requireAuth, (req, res) => {
+  if (!db.unpublishPage(req.params.slug, req.user.email)) return res.status(404).json({ error: 'Página não encontrada' });
+  res.json({ status: 'unpublished' });
+});
+
+app.post('/api/pages/:slug/republish', requireAuth, (req, res) => {
+  if (!db.republishPage(req.params.slug, req.user.email)) return res.status(404).json({ error: 'Página não encontrada' });
+  res.json({ status: 'published' });
 });
 
 // Visão administrativa — exige ADMIN_TOKEN configurado e correto.
@@ -101,6 +219,8 @@ app.get('/api/admin/overview', (req, res) => {
 app.get('/api/pages/:slug', (req, res) => {
   const page = db.getPageBySlug(req.params.slug);
   if (!page) return res.status(404).json({ error: 'Página não encontrada' });
+  // Despublicada se comporta como inexistente — não revelar que está escondida.
+  if (page.status === 'unpublished') return res.status(404).json({ error: 'Página não encontrada' });
   if (page.status !== 'published') return res.status(403).json({ status: 'draft', error: 'Página aguardando pagamento' });
   const exp = page.data?.dataExpiracao;
   if (exp && new Date(`${exp}T23:59:59`) < new Date()) {
@@ -117,8 +237,10 @@ app.post('/api/drafts', async (req, res) => {
     const existing = data.slug ? db.getPageBySlug(data.slug) : null;
     const slug = existing && existing.status === 'draft' ? data.slug : db.uniqueSlug(data.titulo);
     const ai = await generatePageContent(data);
-    const page = db.savePage({ slug, email: email || '', status: 'draft', data: { ...data, ...ai, slug } });
-    res.json({ slug, page });
+    // Token de Reivindicação nasce com a página e fica no navegador do Criador
+    const claimToken = existing?.claim_token || crypto.randomBytes(24).toString('base64url');
+    const page = db.savePage({ slug, email: email || '', status: 'draft', claimToken, data: { ...data, ...ai, slug } });
+    res.json({ slug, page, claimToken: page.claim_token || claimToken });
   } catch (e) {
     console.error('draft error', e);
     res.status(500).json({ error: 'Erro ao salvar rascunho' });
