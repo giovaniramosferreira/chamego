@@ -58,5 +58,8 @@ export async function autocomplete(input) {
 }
 
 export async function photoStream(name, maxWidth = 900) {
-  return fetch(`https://places.googleapis.com/v1/${name}/media?maxWidthPx=${maxWidth}&key=${KEY()}`);
+  // Chave no header (não na URL) para não vazar em logs/proxies
+  return fetch(`https://places.googleapis.com/v1/${name}/media?maxWidthPx=${maxWidth}`, {
+    headers: { 'X-Goog-Api-Key': KEY() },
+  });
 }

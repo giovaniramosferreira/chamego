@@ -126,7 +126,12 @@ app.post('/api/orders', (req, res) => {
 
 // Google Places — autocomplete
 app.get('/api/places/autocomplete', async (req, res) => {
-  res.json({ suggestions: await autocomplete(String(req.query.q || '')) });
+  try {
+    res.json({ suggestions: await autocomplete(String(req.query.q || '')) });
+  } catch (e) {
+    console.error('autocomplete error', e);
+    res.status(502).json({ suggestions: [] });
+  }
 });
 
 // Google Places — roteiro dia/noite com frases românticas
