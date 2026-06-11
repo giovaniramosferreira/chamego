@@ -346,7 +346,7 @@ export default function LandingPage() {
               <div key={idx} className="card overflow-hidden">
                 <button
                   onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
-                  className="w-full flex items-center justify-between px-6 py-5 text-left focus:outline-none text-ink-900 font-semibold hover:bg-cream-50 transition-colors cursor-pointer min-h-[44px]"
+                  className="w-full flex items-center justify-between px-6 py-5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-wine-700 text-ink-900 font-semibold hover:bg-cream-50 transition-colors cursor-pointer min-h-[44px]"
                 >
                   <span className="text-sm md:text-base">{faq.q}</span>
                   <ChevronDown
