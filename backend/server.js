@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { db } from './db.js';
 import { generateCupido, generateDatePitch, generatePageContent } from './ai.js';
 import { buildRoteiro, autocomplete, photoStream } from './places.js';
+import { createPixPayment, getPayment, PRICE } from './payments.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -217,6 +218,50 @@ app.post('/api/uploads/page-audio', uploadAudio.single('audio'), async (req, res
   }
 });
 
+
+// Pagamento Pix — cria cobrança no Mercado Pago
+app.post('/api/payments', async (req, res) => {
+  try {
+    const { slug, email } = req.body;
+    const page = db.getPageBySlug(slug);
+    if (!page) return res.status(404).json({ error: 'Rascunho não encontrado' });
+    if (page.status === 'published') return res.json({ alreadyPublished: true });
+    const p = await createPixPayment({ slug, email });
+    db.savePayment({ id: p.id, slug, status: p.status, amount: PRICE });
+    const tx = p.point_of_interaction?.transaction_data || {};
+    res.json({ paymentId: String(p.id), qrCode: tx.qr_code, qrCodeBase64: tx.qr_code_base64 });
+  } catch (e) { console.error(e); res.status(502).json({ error: 'Falha ao criar pagamento Pix' }); }
+});
+
+// Pagamento Pix — consulta status de um pagamento
+app.get('/api/payments/:id/status', async (req, res) => {
+  const local = db.getPayment(req.params.id);
+  if (!local) return res.status(404).json({ error: 'Pagamento não encontrado' });
+  if (local.status !== 'approved') {
+    try {
+      const p = await getPayment(req.params.id);
+      db.savePayment({ id: p.id, slug: local.slug, status: p.status, amount: local.amount });
+      if (p.status === 'approved') db.publishPage(local.slug);
+      return res.json({ status: p.status, slug: local.slug });
+    } catch { /* devolve estado local abaixo */ }
+  }
+  res.json({ status: db.getPayment(req.params.id).status, slug: local.slug });
+});
+
+// Webhook Mercado Pago — publica página quando pagamento for aprovado
+app.post('/api/webhooks/mercadopago', async (req, res) => {
+  try {
+    const id = req.body?.data?.id || req.query['data.id'];
+    if ((req.body?.type === 'payment' || req.query.type === 'payment') && id) {
+      const p = await getPayment(id);
+      if (p.external_reference) {
+        db.savePayment({ id: p.id, slug: p.external_reference, status: p.status, amount: PRICE });
+        if (p.status === 'approved') db.publishPage(p.external_reference);
+      }
+    }
+    res.sendStatus(200); // sempre 200 — MP reenvia em caso de erro
+  } catch (e) { console.error('webhook', e); res.sendStatus(200); }
+});
 
 // Em produção o Express serve o build do Vite (SPA) — mesmo origin do /api
 const distDir = path.join(__dirname, '..', 'dist');
