@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Volume2, VolumeX, ChevronDown, Play, Pause, Moon } from 'lucide-react';
+import { Volume2, VolumeX, ChevronDown, Play, Pause } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import CompatibilityCard from '../components/CompatibilityCard';
 import RetrospectiveStories from '../components/RetrospectiveStories';
@@ -88,6 +88,10 @@ export default function CouplePage() {
 
   // Retrospective
   const [isRetroOpen, setIsRetroOpen] = useState(false);
+
+  // Roteiro collapsible groups
+  const [roteiroOpen, setRoteiroOpen] = useState({ dia: false, noite: false });
+  const toggleRoteiro = (group) => setRoteiroOpen(prev => ({ ...prev, [group]: !prev[group] }));
 
   /* ── Fetch page data ─────────────────────────────────────── */
   useEffect(() => {
@@ -336,6 +340,8 @@ export default function CouplePage() {
   const moon = getMoonPhase(coupleData.dataInicio);
   const anosLabel = timeDiff.years === 1 ? 'Ano' : 'Anos';
 
+  const hasCeuSection = coupleData.compatibilidade || coupleData.horoscopoTexto || coupleData.dataInicio;
+
   return (
     <div className="min-h-screen bg-cream-50 text-ink-900 font-sans relative overflow-x-hidden">
       {/* Hidden audio elements */}
@@ -469,73 +475,92 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 5. Carta de Amor (IA) */}
+        {/* 5. Poema (ex-Carta de Amor) */}
         {coupleData.cartaDeAmor && (
           <ScrollReveal>
-            <div className="card p-8 sm:p-10 bg-white">
-              <p className="eyebrow mb-2">Carta de amor</p>
-              <h2 className="font-display text-2xl text-ink-900 mb-6">Escrita para vocês</h2>
-              <p className="font-display italic text-lg text-ink-900 leading-loose whitespace-pre-line">
+            <div className="card p-8">
+              <p className="eyebrow mb-2">Poema de vocês</p>
+              <h2 className="font-display text-2xl text-ink-900 mb-6">Um poema só de vocês</h2>
+              <p className="font-display italic text-lg leading-relaxed whitespace-pre-line text-center max-w-md mx-auto text-ink-900">
                 {coupleData.cartaDeAmor}
               </p>
             </div>
           </ScrollReveal>
         )}
 
-        {/* 6. Compatibilidade */}
-        {coupleData.compatibilidade && (
+        {/* 6. O Céu de Vocês — merged dark set piece */}
+        {hasCeuSection && (
           <ScrollReveal>
-            <CompatibilityCard coupleData={coupleData} compatibilidade={coupleData.compatibilidade} />
-          </ScrollReveal>
-        )}
-
-        {/* 7. Sinastria — dark set piece */}
-        {coupleData.horoscopoTexto && (
-          <ScrollReveal>
-            <div className="bg-slate-950 rounded-[2rem] p-8 text-white relative overflow-hidden">
+            <section className="bg-slate-950 rounded-[2rem] p-6 sm:p-10 text-white overflow-hidden relative">
+              {/* Ambient glow */}
               <div className="absolute -right-16 -top-16 w-48 h-48 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
               <div className="absolute -left-16 -bottom-16 w-48 h-48 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
-              <div className="relative z-10 flex flex-col gap-6">
-                <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-800 pb-5 gap-4">
-                  <div className="text-center sm:text-left">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 mb-1">Conexão sob os astros</p>
-                    <h3 className="font-display text-2xl font-semibold text-white">Sinastria Estelar</h3>
-                  </div>
-                  {coupleData.signo1 && coupleData.signo2 && (
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col items-center bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-2xl">
-                        <span className="text-xl leading-none">{coupleData.signo1.symbol}</span>
-                        <span className="text-[8px] font-semibold text-slate-400 uppercase tracking-wider mt-1">{coupleData.signo1.name}</span>
-                      </div>
-                      <span className="text-slate-600 font-semibold text-sm">+</span>
-                      <div className="flex flex-col items-center bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-2xl">
-                        <span className="text-xl leading-none">{coupleData.signo2.symbol}</span>
-                        <span className="text-[8px] font-semibold text-slate-400 uppercase tracking-wider mt-1">{coupleData.signo2.name}</span>
-                      </div>
-                    </div>
-                  )}
+
+              <div className="relative z-10 flex flex-col gap-8">
+                {/* Header */}
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 mb-2">O céu de vocês</p>
+                  <h3 className="font-display text-3xl font-semibold text-white">Escrito nas estrelas</h3>
                 </div>
-                <p className="font-display italic text-slate-300 text-base leading-relaxed whitespace-pre-line">
-                  {coupleData.horoscopoTexto}
-                </p>
+
+                {/* Signos badges */}
+                {coupleData.signo1 && coupleData.signo2 && (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex flex-col items-center bg-slate-900 border border-slate-800 px-4 py-2 rounded-2xl">
+                      <span className="text-2xl leading-none">{coupleData.signo1.symbol}</span>
+                      <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mt-1">{coupleData.signo1.name}</span>
+                    </div>
+                    <span className="text-slate-600 font-semibold">+</span>
+                    <div className="flex flex-col items-center bg-slate-900 border border-slate-800 px-4 py-2 rounded-2xl">
+                      <span className="text-2xl leading-none">{coupleData.signo2.symbol}</span>
+                      <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider mt-1">{coupleData.signo2.name}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sinastria text */}
+                {coupleData.horoscopoTexto && (
+                  <p className="font-display italic text-slate-300 leading-relaxed">
+                    {coupleData.horoscopoTexto}
+                  </p>
+                )}
+
+                {/* Compatibility score */}
+                {coupleData.compatibilidade && (
+                  <CompatibilityCard
+                    coupleData={coupleData}
+                    compatibilidade={coupleData.compatibilidade}
+                    dark
+                  />
+                )}
+
+                {/* Star map */}
+                {coupleData.dataInicio && (
+                  <div className="my-2">
+                    <StarMapCard
+                      dataInicio={coupleData.dataInicio}
+                      cidade={coupleData.cidade}
+                      bairro={coupleData.bairro}
+                      nomes={coupleData.titulo}
+                    />
+                  </div>
+                )}
+
+                {/* Moon footer */}
+                {coupleData.dataInicio && (
+                  <div className="flex items-center gap-3 pt-2 border-t border-slate-800">
+                    <span className="text-3xl">{moon.icon}</span>
+                    <p className="text-sm text-slate-400">
+                      Naquela noite, a lua estava <span className="text-slate-200 font-semibold">{moon.name}</span> — {moon.desc}
+                    </p>
+                  </div>
+                )}
               </div>
-            </div>
+            </section>
           </ScrollReveal>
         )}
 
-        {/* 8. Mapa Estelar */}
-        {coupleData.dataInicio && (
-          <ScrollReveal>
-            <StarMapCard
-              dataInicio={coupleData.dataInicio}
-              cidade={coupleData.cidade}
-              bairro={coupleData.bairro}
-              nomes={coupleData.titulo}
-            />
-          </ScrollReveal>
-        )}
-
-        {/* 9. Roteiro de Dates */}
+        {/* 7. Roteiro de Dates — collapsible groups */}
         {coupleData.roteiro && (coupleData.roteiro.dia?.length || coupleData.roteiro.noite?.length) && (
           <ScrollReveal>
             <div className="flex flex-col gap-6">
@@ -551,92 +576,114 @@ export default function CouplePage() {
                 )}
               </div>
 
+              {/* De dia */}
               {coupleData.roteiro.dia?.length > 0 && (
-                <div className="flex flex-col gap-4">
-                  <p className="font-display text-lg font-semibold text-ink-900">☀️ De dia</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {coupleData.roteiro.dia.map((place, idx) => (
-                      <div key={idx} className="card overflow-hidden">
-                        {place.fotoUrl && (
-                          <img
-                            src={place.fotoUrl}
-                            alt={place.nome}
-                            className="w-full aspect-[3/2] object-cover"
-                          />
-                        )}
-                        <div className="p-5 flex flex-col gap-2">
-                          <p className="eyebrow">{place.categoria}</p>
-                          <h4 className="font-display text-lg font-semibold text-ink-900">{place.nome}</h4>
-                          {(place.nota || place.preco) && (
-                            <p className="text-sm text-ink-600">
-                              {place.nota && `⭐ ${place.nota}`}{place.nota && place.preco && ' · '}{place.preco}
-                            </p>
+                <div>
+                  <button
+                    onClick={() => toggleRoteiro('dia')}
+                    className="card px-5 py-4 flex items-center justify-between w-full text-left"
+                  >
+                    <span className="font-semibold text-ink-900">
+                      ☀️ De dia — {coupleData.roteiro.dia.length} {coupleData.roteiro.dia.length === 1 ? 'lugar' : 'lugares'}
+                    </span>
+                    <ChevronDown className={`w-5 h-5 text-ink-400 transition-transform ${roteiroOpen.dia ? 'rotate-180' : ''}`} />
+                  </button>
+                  {roteiroOpen.dia && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                      {coupleData.roteiro.dia.map((place, idx) => (
+                        <div key={idx} className="card overflow-hidden">
+                          {place.fotoUrl && (
+                            <img
+                              src={place.fotoUrl}
+                              alt={place.nome}
+                              className="w-full aspect-[3/2] object-cover"
+                            />
                           )}
-                          {place.frase && (
-                            <p className="font-display italic text-ink-600 text-sm">{place.frase}</p>
-                          )}
-                          {place.mapsUrl && (
-                            <a
-                              href={place.mapsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-wine-700 text-sm font-semibold mt-1"
-                            >
-                              Abrir no Maps →
-                            </a>
-                          )}
+                          <div className="p-5 flex flex-col gap-2">
+                            <p className="eyebrow">{place.categoria}</p>
+                            <h4 className="font-display text-lg font-semibold text-ink-900">{place.nome}</h4>
+                            {(place.nota || place.preco) && (
+                              <p className="text-sm text-ink-600">
+                                {place.nota && `⭐ ${place.nota}`}{place.nota && place.preco && ' · '}{place.preco}
+                              </p>
+                            )}
+                            {place.frase && (
+                              <p className="font-display italic text-ink-600 text-sm">{place.frase}</p>
+                            )}
+                            {place.mapsUrl && (
+                              <a
+                                href={place.mapsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-wine-700 text-sm font-semibold mt-1"
+                              >
+                                Abrir no Maps →
+                              </a>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
+              {/* À noite */}
               {coupleData.roteiro.noite?.length > 0 && (
-                <div className="flex flex-col gap-4">
-                  <p className="font-display text-lg font-semibold text-ink-900">🌙 À noite</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {coupleData.roteiro.noite.map((place, idx) => (
-                      <div key={idx} className="card overflow-hidden">
-                        {place.fotoUrl && (
-                          <img
-                            src={place.fotoUrl}
-                            alt={place.nome}
-                            className="w-full aspect-[3/2] object-cover"
-                          />
-                        )}
-                        <div className="p-5 flex flex-col gap-2">
-                          <p className="eyebrow">{place.categoria}</p>
-                          <h4 className="font-display text-lg font-semibold text-ink-900">{place.nome}</h4>
-                          {(place.nota || place.preco) && (
-                            <p className="text-sm text-ink-600">
-                              {place.nota && `⭐ ${place.nota}`}{place.nota && place.preco && ' · '}{place.preco}
-                            </p>
+                <div>
+                  <button
+                    onClick={() => toggleRoteiro('noite')}
+                    className="card px-5 py-4 flex items-center justify-between w-full text-left"
+                  >
+                    <span className="font-semibold text-ink-900">
+                      🌙 À noite — {coupleData.roteiro.noite.length} {coupleData.roteiro.noite.length === 1 ? 'lugar' : 'lugares'}
+                    </span>
+                    <ChevronDown className={`w-5 h-5 text-ink-400 transition-transform ${roteiroOpen.noite ? 'rotate-180' : ''}`} />
+                  </button>
+                  {roteiroOpen.noite && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                      {coupleData.roteiro.noite.map((place, idx) => (
+                        <div key={idx} className="card overflow-hidden">
+                          {place.fotoUrl && (
+                            <img
+                              src={place.fotoUrl}
+                              alt={place.nome}
+                              className="w-full aspect-[3/2] object-cover"
+                            />
                           )}
-                          {place.frase && (
-                            <p className="font-display italic text-ink-600 text-sm">{place.frase}</p>
-                          )}
-                          {place.mapsUrl && (
-                            <a
-                              href={place.mapsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-wine-700 text-sm font-semibold mt-1"
-                            >
-                              Abrir no Maps →
-                            </a>
-                          )}
+                          <div className="p-5 flex flex-col gap-2">
+                            <p className="eyebrow">{place.categoria}</p>
+                            <h4 className="font-display text-lg font-semibold text-ink-900">{place.nome}</h4>
+                            {(place.nota || place.preco) && (
+                              <p className="text-sm text-ink-600">
+                                {place.nota && `⭐ ${place.nota}`}{place.nota && place.preco && ' · '}{place.preco}
+                              </p>
+                            )}
+                            {place.frase && (
+                              <p className="font-display italic text-ink-600 text-sm">{place.frase}</p>
+                            )}
+                            {place.mapsUrl && (
+                              <a
+                                href={place.mapsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-wine-700 text-sm font-semibold mt-1"
+                              >
+                                Abrir no Maps →
+                              </a>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </ScrollReveal>
         )}
 
-        {/* 10. Áudio + Cupido */}
+        {/* 8. Áudio + Cupido */}
         {(coupleData.cupidoComentario || coupleData.audioUrl) && (
           <ScrollReveal>
             <div className="card p-8">
@@ -676,7 +723,7 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 11. Conquistas — timeline */}
+        {/* 9. Conquistas — timeline */}
         {coupleData.conquistas && coupleData.conquistas.length > 0 && (
           <div className="card p-8">
             <p className="eyebrow mb-2">Nossa linha do tempo</p>
@@ -708,7 +755,7 @@ export default function CouplePage() {
           </div>
         )}
 
-        {/* 12. Palavra Secreta */}
+        {/* 10. Palavra Secreta */}
         {coupleData.palavraSecreta && (
           <ScrollReveal>
             <div className="card p-8">
@@ -747,7 +794,7 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 13. Roleta */}
+        {/* 11. Roleta */}
         {coupleData.opcoesRoleta && coupleData.opcoesRoleta.length > 0 && (
           <ScrollReveal>
             <div className="card p-8">
@@ -789,34 +836,16 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 14. Lua — dark set piece */}
-        {coupleData.dataInicio && (
-          <ScrollReveal>
-            <div className="bg-slate-950 rounded-[2rem] p-8 text-white flex flex-col md:flex-row items-center gap-6">
-              <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-4xl flex-shrink-0 shadow-md">
-                {moon.icon}
-              </div>
-              <div className="text-center md:text-left">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 flex items-center justify-center md:justify-start gap-1.5 mb-1">
-                  <Moon className="w-3.5 h-3.5" /> Lua do Nosso Encontro
-                </p>
-                <h4 className="font-display text-xl font-semibold text-white">A lua estava em fase {moon.name}</h4>
-                <p className="text-slate-400 text-sm mt-2 leading-relaxed italic">&ldquo;{moon.desc}&rdquo;</p>
-              </div>
-            </div>
-          </ScrollReveal>
-        )}
-
       </main>
 
-      {/* 15. Retrospectiva floating button */}
+      {/* Retrospectiva floating button — centered bottom */}
       {!isRetroOpen && (
-        <div className="fixed bottom-6 right-6 z-40">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
           <button
             onClick={() => setIsRetroOpen(true)}
-            className="btn-primary shadow-lg"
+            className="btn-primary px-10 py-4 text-base shadow-xl"
           >
-            ▶ Retrospectiva
+            ▶ Ver nossa retrospectiva
           </button>
         </div>
       )}

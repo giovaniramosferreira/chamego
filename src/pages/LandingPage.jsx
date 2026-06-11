@@ -1,9 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import heroImg from '../assets/hero.png';
+
+// Defined outside component so it's a stable reference (no missing-deps warning)
+const typewriterPhrases = [
+  "com um contador ao vivo",
+  "com a música de vocês",
+  "com fotos em Polaroid",
+  "com mensagens do coração"
+];
 
 // FAQ list
 const faqs = [
@@ -17,7 +25,7 @@ const faqs = [
   },
   {
     q: "Por quanto tempo a página fica no ar?",
-    a: "Para sempre. Você paga R$19,90 uma única vez e a página fica no ar por tempo indeterminado, sem mensalidades."
+    a: "Para sempre. Você paga uma única vez e a página fica no ar por tempo indeterminado, sem mensalidades."
   },
   {
     q: "Como funciona o pagamento?",
@@ -99,31 +107,25 @@ export default function LandingPage() {
   const lastPage = localStorage.getItem('couple-page-last');
 
   // Typewriter effect states
-  const typewriterPhrases = [
-    "com um contador ao vivo",
-    "com a música de vocês",
-    "com fotos em Polaroid",
-    "com mensagens do coração"
-  ];
   const [currentPhrase, setCurrentPhrase] = useState("");
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [typingSpeed, setTypingSpeed] = useState(100);
+  const typingSpeedRef = useRef(100);
 
   useEffect(() => {
     let timer;
     const fullPhrase = typewriterPhrases[phraseIndex];
 
     if (isDeleting) {
+      typingSpeedRef.current = 40;
       timer = setTimeout(() => {
         setCurrentPhrase(fullPhrase.substring(0, currentPhrase.length - 1));
-        setTypingSpeed(40);
-      }, typingSpeed);
+      }, typingSpeedRef.current);
     } else {
+      typingSpeedRef.current = 100;
       timer = setTimeout(() => {
         setCurrentPhrase(fullPhrase.substring(0, currentPhrase.length + 1));
-        setTypingSpeed(100);
-      }, typingSpeed);
+      }, typingSpeedRef.current);
     }
 
     if (!isDeleting && currentPhrase === fullPhrase) {
@@ -180,7 +182,7 @@ export default function LandingPage() {
               onClick={() => navigate('/criar')}
               className="btn-primary"
             >
-              Criar nossa página — R$19,90
+              Criar nossa página
             </button>
           </div>
 
@@ -308,19 +310,9 @@ export default function LandingPage() {
       <section className="bg-cream-100 py-24 px-5">
         <div className="mx-auto max-w-6xl flex justify-center">
           <div className="card max-w-md w-full p-10 text-center">
-            <p className="eyebrow mb-6">Investimento único</p>
+            <p className="eyebrow mb-6">Tudo incluso</p>
 
-            <div className="mb-2">
-              <span className="line-through text-ink-400 text-lg mr-2">R$39,90</span>
-            </div>
-            <div className="font-display text-6xl text-ink-900 tracking-tight leading-none mb-3">
-              R$19,90
-            </div>
-            <p className="text-ink-600 text-sm mb-8">
-              pagamento único via Pix · página vitalícia
-            </p>
-
-            <ul className="text-left flex flex-col gap-3 mb-10">
+            <ul className="text-left flex flex-col gap-3 mb-6">
               {[
                 "Todas as cenas interativas",
                 "Carta de amor escrita por IA",
@@ -335,6 +327,8 @@ export default function LandingPage() {
                 </li>
               ))}
             </ul>
+
+            <p className="text-ink-600 text-sm mb-8">Pagamento único via Pix · sem mensalidades</p>
 
             <button
               onClick={() => navigate('/criar')}
@@ -387,7 +381,7 @@ export default function LandingPage() {
             onClick={() => navigate('/criar')}
             className="btn-primary"
           >
-            Criar nossa página — R$19,90
+            Criar nossa página
           </button>
         </div>
       </section>
@@ -402,7 +396,7 @@ export default function LandingPage() {
           onClick={() => navigate('/criar')}
           className="btn-primary w-full"
         >
-          Criar página — R$19,90
+          Criar nossa página
         </button>
       </div>
     </div>

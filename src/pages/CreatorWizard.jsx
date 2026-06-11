@@ -23,11 +23,62 @@ const DEFAULT_ROULETTE = [
   'Viagem de Fim de Semana 🚗',
 ];
 
+/* ─── Date helpers ───────────────────────────────────────────────────── */
+function isoToBr(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function brToIso(br) {
+  const match = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return '';
+  const [, d, mo, y] = match;
+  const day = +d, month = +mo, year = +y;
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return '';
+  return `${y}-${mo}-${d}`;
+}
+
+/* ─── DateField component ────────────────────────────────────────────── */
+// The component tracks its own display text (DD/MM/AAAA) independently.
+// When the user types, we parse and call onChange with the ISO value.
+// The parent keeps the ISO value in formData; we initialise display from it.
+// The key prop on DateField should be used to reset when needed.
+function DateField({ label, value, onChange, optional }) {
+  const [text, setText] = useState(() => isoToBr(value));
+
+  function handleChange(e) {
+    let v = e.target.value.replace(/\D/g, '').slice(0, 8);
+    if (v.length > 4) v = `${v.slice(0, 2)}/${v.slice(2, 4)}/${v.slice(4)}`;
+    else if (v.length > 2) v = `${v.slice(0, 2)}/${v.slice(2)}`;
+    setText(v);
+    onChange(brToIso(v));
+  }
+
+  return (
+    <div>
+      <label className="text-sm text-ink-600 mb-1.5 block">
+        {label}{optional && <span className="text-ink-400 ml-1">(opcional)</span>}
+      </label>
+      <input
+        type="text"
+        inputMode="numeric"
+        placeholder="DD/MM/AAAA"
+        className="input-base"
+        value={text}
+        onChange={handleChange}
+      />
+    </div>
+  );
+}
+
 export default function CreatorWizard() {
   const navigate = useNavigate();
 
   /* ─── Form state ─────────────────────────────────────────────────────── */
   const [formData, setFormData] = useState({
+    nome1: '',
+    nome2: '',
     titulo: '',
     dataInicio: '',
     dataNasc1: '',
@@ -113,7 +164,6 @@ export default function CreatorWizard() {
     const parts = suggestion.split(',');
     const bairro = (parts[0] || '').trim();
     const cidadeRaw = (parts[1] || '').trim();
-    // strip trailing " - UF"; sugestão de segmento único vira cidade = bairro
     const cidade = cidadeRaw.replace(/\s*-\s*[A-Z]{2}.*$/, '').trim() || bairro;
     setFormData(prev => ({ ...prev, bairro, cidade, roteiro: null }));
     setPlaceQuery(suggestion);
@@ -140,22 +190,33 @@ export default function CreatorWizard() {
     }
   };
 
-  /* ─── Step 5 — iTunes music ──────────────────────────────────────────── */
+  /* ─── Step 5 — Music search via backend proxy ────────────────────────── */
   const [songQuery, setSongQuery] = useState('');
   const [songResults, setSongResults] = useState([]);
   const [isSearchingSongs, setIsSearchingSongs] = useState(false);
+  const [songError, setSongError] = useState('');
   const [previewPlayingUrl, setPreviewPlayingUrl] = useState('');
   const audioRef = useRef(null);
 
   const handleSearchSongs = async () => {
     if (!songQuery.trim()) return;
     setIsSearchingSongs(true);
+    setSongError('');
+    setSongResults([]);
     try {
-      const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(songQuery)}&media=music&limit=6`);
+      const res = await fetch(`/api/music/search?q=${encodeURIComponent(songQuery)}`);
+      if (!res.ok) {
+        setSongError('Não foi possível buscar agora. Tente de novo.');
+        return;
+      }
       const data = await res.json();
-      setSongResults(data.results || []);
+      if (!data.results || data.results.length === 0) {
+        setSongError('Nenhuma música encontrada — tente outro nome.');
+      } else {
+        setSongResults(data.results);
+      }
     } catch {
-      /* silent */
+      setSongError('Não foi possível buscar agora. Tente de novo.');
     } finally {
       setIsSearchingSongs(false);
     }
@@ -203,7 +264,8 @@ export default function CreatorWizard() {
       mediaRecorderRef.current = mr;
       mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       mr.onstop = async () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const mime = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: mime });
         setRecordedAudioUrl(URL.createObjectURL(blob));
         await handleUploadAudioBlob(blob);
       };
@@ -228,8 +290,9 @@ export default function CreatorWizard() {
   const handleUploadAudioBlob = async (blob) => {
     setIsUploadingAudio(true);
     setProcessingStatus('Enviando áudio para o servidor...');
+    const ext = blob.type.includes('mp4') ? 'mp4' : blob.type.includes('ogg') ? 'ogg' : 'webm';
     const fd = new FormData();
-    fd.append('audio', blob, 'recording.webm');
+    fd.append('audio', blob, `recording.${ext}`);
     fd.append('titulo', formData.titulo);
     fd.append('mensagem', formData.mensagem);
     const t2 = setTimeout(() => setProcessingStatus('Transcrevendo fala (Whisper)...'), 1200);
@@ -390,8 +453,10 @@ export default function CreatorWizard() {
   const handleNext = () => {
     setFormError('');
     if (currentStep === 1) {
-      if (!formData.titulo.trim()) { setFormError('Por favor, informe o nome do casal.'); return; }
-      if (!formData.dataInicio) { setFormError('Por favor, informe a data de início do relacionamento.'); return; }
+      if (!formData.nome1.trim() || !formData.nome2.trim() || !formData.dataInicio) {
+        setFormError('Preencha os dois nomes e a data de início.');
+        return;
+      }
     }
     if (currentStep === 3 && !formData.mensagem.trim()) {
       setFormError('Por favor, escreva uma mensagem de amor.');
@@ -411,6 +476,19 @@ export default function CreatorWizard() {
   /* ─── Helpers ────────────────────────────────────────────────────────── */
   const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+  /* ─── nome1/nome2 → titulo sync ──────────────────────────────────────── */
+  const handleNome1Change = (val) => {
+    const nome2 = formData.nome2;
+    const parts = [val.trim(), nome2.trim()].filter(Boolean);
+    setFormData(p => ({ ...p, nome1: val, titulo: parts.join(' & ') }));
+  };
+
+  const handleNome2Change = (val) => {
+    const nome1 = formData.nome1;
+    const parts = [nome1.trim(), val.trim()].filter(Boolean);
+    setFormData(p => ({ ...p, nome2: val, titulo: parts.join(' & ') }));
+  };
+
   /* ─── Render steps ───────────────────────────────────────────────────── */
   const renderStep = () => {
     switch (currentStep) {
@@ -419,50 +497,52 @@ export default function CreatorWizard() {
         return (
           <div className="flex flex-col gap-6">
             <div>
-              <label className="eyebrow mb-2 block">Nome do casal *</label>
+              <label className="eyebrow mb-2 block">Seu nome *</label>
               <input
                 className="input-base"
                 type="text"
-                placeholder="Ex: Mariana & João"
+                placeholder="Ex: Mariana"
                 inputMode="text"
-                value={formData.titulo}
-                onChange={e => setFormData(p => ({ ...p, titulo: e.target.value }))}
+                value={formData.nome1}
+                onChange={e => handleNome1Change(e.target.value)}
               />
             </div>
 
             <div>
-              <label className="eyebrow mb-2 block">Início do relacionamento *</label>
+              <label className="eyebrow mb-2 block">Nome do seu amor *</label>
               <input
                 className="input-base"
-                type="date"
-                value={formData.dataInicio}
-                onChange={e => setFormData(p => ({ ...p, dataInicio: e.target.value }))}
+                type="text"
+                placeholder="Ex: João"
+                inputMode="text"
+                value={formData.nome2}
+                onChange={e => handleNome2Change(e.target.value)}
               />
             </div>
+
+            <DateField
+              label="Início do relacionamento *"
+              value={formData.dataInicio}
+              onChange={val => setFormData(p => ({ ...p, dataInicio: val }))}
+            />
 
             {/* Sinastria opcional */}
             <div className="card p-5">
               <p className="eyebrow mb-1">Sinastria <span className="normal-case font-normal text-ink-400">(opcional)</span></p>
               <p className="text-sm text-ink-400 mb-4">Preencher habilita a análise astral do casal.</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="eyebrow mb-1.5 block">Seu nascimento</label>
-                  <input
-                    className="input-base text-sm"
-                    type="date"
-                    value={formData.dataNasc1}
-                    onChange={e => setFormData(p => ({ ...p, dataNasc1: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="eyebrow mb-1.5 block">Nascimento do seu amor</label>
-                  <input
-                    className="input-base text-sm"
-                    type="date"
-                    value={formData.dataNasc2}
-                    onChange={e => setFormData(p => ({ ...p, dataNasc2: e.target.value }))}
-                  />
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <DateField
+                  label="Seu nascimento"
+                  value={formData.dataNasc1}
+                  onChange={val => setFormData(p => ({ ...p, dataNasc1: val }))}
+                  optional
+                />
+                <DateField
+                  label="Nascimento do seu amor"
+                  value={formData.dataNasc2}
+                  onChange={val => setFormData(p => ({ ...p, dataNasc2: val }))}
+                  optional
+                />
               </div>
             </div>
           </div>
@@ -627,6 +707,10 @@ export default function CreatorWizard() {
                 </div>
 
                 {isSearchingSongs && <p className="text-sm text-ink-400 text-center py-2 animate-pulse">Buscando…</p>}
+
+                {songError && (
+                  <p className="text-sm text-wine-700">{songError}</p>
+                )}
 
                 <div className="flex flex-col gap-2 max-h-56 overflow-y-auto">
                   {songResults.map(song => (
