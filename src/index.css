@@ -1,5 +1,4 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600&family=Inter:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700;800;900&family=Permanent+Marker&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -19,45 +18,15 @@
   .eyebrow     { @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-400; }
 }
 
-  /* Redesigned LovePanda premium pink buttons */
-  .btn-3d-primary {
-    @apply relative inline-flex items-center justify-center rounded-full bg-gradient-to-r from-pink-500 to-rose-500 px-8 py-3.5 text-base font-bold text-white transition-all duration-200 cursor-pointer select-none shadow-lg shadow-pink-500/25;
-  }
-  .btn-3d-primary:hover {
-    @apply scale-[1.02] -translate-y-[1px] shadow-xl shadow-pink-500/35;
-  }
-  .btn-3d-primary:active {
-    @apply scale-[0.98] translate-y-0;
-  }
-
-  .btn-3d-secondary {
-    @apply relative inline-flex items-center justify-center rounded-full bg-white border border-pink-200 px-8 py-3.5 text-base font-bold text-pink-600 transition-all duration-200 cursor-pointer select-none shadow-md shadow-pink-100/30;
-  }
-  .btn-3d-secondary:hover {
-    @apply scale-[1.02] -translate-y-[1px] bg-pink-50/50 shadow-lg shadow-pink-100/40;
-  }
-  .btn-3d-secondary:active {
-    @apply scale-[0.98] translate-y-0;
-  }
-
-  /* Premium LovePanda-style Cards */
-  .card-premium-love {
-    @apply rounded-[32px] border border-pink-100/80 bg-white/90 backdrop-blur-md shadow-xl shadow-pink-100/30 transition-all duration-300;
-  }
-  .card-premium-love:hover {
-    @apply shadow-2xl shadow-pink-200/40 -translate-y-[2px];
-  }
-
-
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 10px;
 }
 ::-webkit-scrollbar-track {
-  @apply bg-sugar-50;
+  @apply bg-cream-50;
 }
 ::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-rose-200 border-2 border-sugar-50;
+  @apply rounded-full bg-rose-200 border-2 border-cream-50;
 }
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-rose-300;
