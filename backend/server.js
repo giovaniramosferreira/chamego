@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { db } from './db.js';
 import { generateCupido, generateDatePitch, generatePageContent } from './ai.js';
 import { buildRoteiro, autocomplete, photoStream } from './places.js';
-import { createPixPayment, getPayment, PRICE } from './payments.js';
+import { createPixPayment, getPayment, getPricing, PRICE } from './payments.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +69,11 @@ const uploadAudio = multer({
 // Test endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date() });
+});
+
+// Preço e desconto vigentes (DISCOUNT_PERCENT no servidor)
+app.get('/api/config', (req, res) => {
+  res.json(getPricing());
 });
 
 // Endpoint to fetch page by slug (published only)
@@ -227,7 +232,7 @@ app.post('/api/payments', async (req, res) => {
     if (!page) return res.status(404).json({ error: 'Rascunho não encontrado' });
     if (page.status === 'published') return res.json({ alreadyPublished: true });
     const p = await createPixPayment({ slug, email });
-    db.savePayment({ id: p.id, slug, status: p.status, amount: PRICE });
+    db.savePayment({ id: p.id, slug, status: p.status, amount: getPricing().precoFinal });
     const tx = p.point_of_interaction?.transaction_data || {};
     res.json({ paymentId: String(p.id), qrCode: tx.qr_code, qrCodeBase64: tx.qr_code_base64 });
   } catch (e) { console.error(e); res.status(502).json({ error: 'Falha ao criar pagamento Pix' }); }

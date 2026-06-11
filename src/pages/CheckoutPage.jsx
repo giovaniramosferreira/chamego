@@ -34,6 +34,16 @@ export default function CheckoutPage() {
   const qrRef = useRef(null);
   const pollingRef = useRef(null);
 
+  // pricing (desconto configurado no servidor)
+  const [pricing, setPricing] = useState(null);
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(setPricing)
+      .catch(() => {});
+  }, []);
+  const brl = (v) => `R$ ${v.toFixed(2).replace('.', ',')}`;
+
   // Clean up polling on unmount
   useEffect(() => {
     return () => {
@@ -201,8 +211,23 @@ export default function CheckoutPage() {
 
             {/* Summary row */}
             <div className="flex items-center justify-between py-4 border-t border-b border-ink-900/10">
-              <span className="text-ink-600 text-sm">Página do Casal · vitalícia</span>
-              <span className="font-display text-4xl text-ink-900 leading-none">R$ 19,90</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-ink-600 text-sm">Página do Casal · vitalícia</span>
+                <span className="text-ink-400 text-xs">Pix 🇧🇷 · pagamento único</span>
+              </div>
+              <div className="text-right">
+                {pricing?.descontoPercent > 0 && (
+                  <div className="flex items-center justify-end gap-2 mb-1">
+                    <span className="text-ink-400 text-sm line-through">{brl(pricing.precoCheio)}</span>
+                    <span className="rounded-full bg-wine-100 text-wine-700 text-[11px] font-semibold px-2 py-0.5">
+                      Beta -{pricing.descontoPercent}%
+                    </span>
+                  </div>
+                )}
+                <span className="font-display text-4xl text-ink-900 leading-none">
+                  {pricing ? brl(pricing.precoFinal) : 'R$ —'}
+                </span>
+              </div>
             </div>
 
             {/* Optional email */}

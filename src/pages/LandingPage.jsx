@@ -114,6 +114,15 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState(null);
   const lastPage = localStorage.getItem('couple-page-last');
 
+  // desconto vigente (DISCOUNT_PERCENT no servidor)
+  const [desconto, setDesconto] = useState(0);
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(c => setDesconto(c.descontoPercent || 0))
+      .catch(() => {});
+  }, []);
+
   // Typewriter effect states
   const [currentPhrase, setCurrentPhrase] = useState("");
   const [phraseIndex, setPhraseIndex] = useState(0);
@@ -195,6 +204,12 @@ export default function LandingPage() {
           </div>
 
           <p className="mt-4 text-ink-400 text-sm">+100 mil pessoas emocionadas</p>
+
+          {desconto > 0 && (
+            <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-wine-100 text-wine-700 text-sm font-semibold px-4 py-2">
+              🎉 Beta: {desconto}% de desconto por tempo limitado
+            </p>
+          )}
 
           {/* Hero image */}
           <div className="mt-12">
@@ -336,7 +351,10 @@ export default function LandingPage() {
               ))}
             </ul>
 
-            <p className="text-ink-600 text-sm mb-8">Pagamento único via Pix · sem mensalidades</p>
+            <p className="text-ink-600 text-sm mb-2">Pagamento único via Pix 🇧🇷 · sem mensalidades</p>
+            {desconto > 0 && (
+              <p className="text-wine-700 text-sm font-semibold mb-6">🎉 {desconto}% de desconto durante o Beta</p>
+            )}
 
             <button
               onClick={() => navigate('/criar')}

@@ -206,12 +206,13 @@ async function buildStoryImage(data, td) {
   ctx.fillStyle = '#5C554C';
   ctx.font = '36px Georgia, serif';
   ctx.fillText('ganhei uma página do nosso amor 💌', W / 2, 1330);
+  // divulga só a marca — o link do casal é íntimo, não vai no post
   ctx.fillStyle = '#B3284F';
-  ctx.font = 'italic 700 64px Georgia, serif';
-  ctx.fillText('chamego', W / 2, 1640);
+  ctx.font = 'italic 700 80px Georgia, serif';
+  ctx.fillText('chamego', W / 2, 1620);
   ctx.fillStyle = '#948C80';
-  ctx.font = '34px Georgia, serif';
-  ctx.fillText(window.location.host + '/p/' + (data.slug || ''), W / 2, 1710);
+  ctx.font = 'italic 34px Georgia, serif';
+  ctx.fillText('páginas de amor que emocionam', W / 2, 1690);
   return new Promise((res) => canvas.toBlob(res, 'image/png'));
 }
 

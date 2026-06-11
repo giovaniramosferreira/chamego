@@ -8,12 +8,22 @@ const headers = () => ({
 
 export const PRICE = 19.9;
 
+// Desconto configurável via env DISCOUNT_PERCENT (inteiro 0–100).
+// Mudar a env no Render altera preço exibido e cobrado, sem deploy.
+export function getPricing() {
+  let desconto = parseInt(process.env.DISCOUNT_PERCENT || '0', 10);
+  if (isNaN(desconto) || desconto < 0) desconto = 0;
+  if (desconto > 100) desconto = 100;
+  const precoFinal = Math.round(PRICE * (100 - desconto)) / 100;
+  return { precoCheio: PRICE, descontoPercent: desconto, precoFinal };
+}
+
 export async function createPixPayment({ slug, email }) {
   const res = await fetch(`${MP}/v1/payments`, {
     method: 'POST',
     headers: { ...headers(), 'X-Idempotency-Key': crypto.randomUUID() },
     body: JSON.stringify({
-      transaction_amount: PRICE,
+      transaction_amount: getPricing().precoFinal,
       payment_method_id: 'pix',
       description: `Chamego — Página do Casal (${slug})`,
       external_reference: slug,
