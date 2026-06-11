@@ -81,6 +81,7 @@ export default function CheckoutPage() {
   }
 
   function startPolling(id) {
+    if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/payments/${id}/status`);
@@ -98,18 +99,42 @@ export default function CheckoutPage() {
     }, 4000);
   }
 
-  function handleCopy() {
-    navigator.clipboard.writeText(qrCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // fallback para navegadores antigos sem Clipboard API
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  async function handleCopy() {
+    if (await copyText(qrCode)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   const publicUrl = `${window.location.origin}/p/${slug}`;
 
-  function handleCopyLink() {
-    navigator.clipboard.writeText(publicUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function handleCopyLink() {
+    if (await copyText(publicUrl)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   function handleDownloadQR() {
@@ -222,6 +247,16 @@ export default function CheckoutPage() {
             <p className="text-sm text-ink-400 animate-pulse">
               Aguardando pagamento…
             </p>
+
+            <button
+              onClick={() => {
+                if (pollingRef.current) clearInterval(pollingRef.current);
+                setStage('form');
+              }}
+              className="text-sm text-ink-400 underline underline-offset-4 min-h-[44px] cursor-pointer"
+            >
+              Voltar e gerar outro Pix
+            </button>
           </div>
         )}
 
