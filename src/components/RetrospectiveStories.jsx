@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { X, Heart, Clock, Star, MapPin, Play, Pause, Volume2 } from 'lucide-react';
 
 const SLIDE_DURATION = 6000;
-const TOTAL_SLIDES = 6;
+const TOTAL_SLIDES = 7;
 
 /* ───────────────────── CSS animations (injected once) ───────────────────── */
 const STYLE_ID = '__retro-stories-keyframes';
@@ -124,6 +124,93 @@ function Stars() {
   );
 }
 
+/* ───────────────────── canvas helpers for share image ───────────────────── */
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  let line = '';
+  let currentY = y;
+  for (let n = 0; n < words.length; n++) {
+    const testLine = line + words[n] + ' ';
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && n > 0) {
+      ctx.fillText(line, x, currentY);
+      line = words[n] + ' ';
+      currentY += lineHeight;
+    } else {
+      line = testLine;
+    }
+  }
+  ctx.fillText(line, x, currentY);
+}
+
+async function buildStoryImage(data, td) {
+  const W = 1080, H = 1920;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  // fundo creme
+  ctx.fillStyle = '#FAF7F2';
+  ctx.fillRect(0, 0, W, H);
+  // moldura fina
+  ctx.strokeStyle = 'rgba(26,23,20,0.15)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(60, 60, W - 120, H - 120);
+  // foto do casal (primeira), se houver — círculo grande no topo
+  const fotoUrl = (data.fotos || [])[0];
+  if (fotoUrl) {
+    try {
+      const img = await loadImage(fotoUrl);
+      const R = 280, cx = W / 2, cy = 560;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.clip();
+      const s = Math.max((R * 2) / img.width, (R * 2) / img.height);
+      ctx.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.strokeStyle = '#B3284F';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+    } catch {
+      /* sem foto, segue */
+    }
+  }
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#1A1714';
+  ctx.font = 'italic 700 96px Georgia, serif';
+  wrapText(ctx, data.titulo || 'Nosso amor', W / 2, 1050, 900, 104);
+  ctx.fillStyle = '#B3284F';
+  ctx.font = 'italic 44px Georgia, serif';
+  const dias =
+    td?.years > 0
+      ? `${td.years} ${td.years === 1 ? 'ano' : 'anos'} de história`
+      : `${td?.days ?? ''} dias de história`;
+  ctx.fillText(dias, W / 2, 1190);
+  ctx.fillStyle = '#5C554C';
+  ctx.font = '36px Georgia, serif';
+  ctx.fillText('ganhei uma página do nosso amor 💌', W / 2, 1330);
+  ctx.fillStyle = '#B3284F';
+  ctx.font = 'italic 700 64px Georgia, serif';
+  ctx.fillText('chamego', W / 2, 1640);
+  ctx.fillStyle = '#948C80';
+  ctx.font = '34px Georgia, serif';
+  ctx.fillText(window.location.host + '/p/' + (data.slug || ''), W / 2, 1710);
+  return new Promise((res) => canvas.toBlob(res, 'image/png'));
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN COMPONENT
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -132,8 +219,10 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
+  const [placeIndex, setPlaceIndex] = useState(0);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [slideKey, setSlideKey] = useState(0); // forces re-mount animations
+  const [isSharing, setIsSharing] = useState(false);
 
   const progressRef = useRef(null);
   const audioRef = useRef(null);
@@ -151,10 +240,12 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     progressRef.current = setInterval(() => {
       setProgress((prev) => {
         if (prev + step >= 100) {
+          // On last slide, freeze at 100 — don't auto-close
+          if (currentSlide === TOTAL_SLIDES - 1) {
+            return 100;
+          }
           setCurrentSlide((s) => {
             if (s + 1 >= TOTAL_SLIDES) {
-              // end of stories
-              onClose?.();
               return s;
             }
             setSlideKey((k) => k + 1);
@@ -180,6 +271,31 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     return () => clearInterval(timer);
   }, [isOpen, currentSlide, coupleData?.fotos]);
 
+  /* ── place carousel (slide 5, index 4) ─────────────────────────────── */
+  useEffect(() => {
+    if (!isOpen || currentSlide !== 4) return;
+    const places = [
+      ...(coupleData?.roteiro?.dia || []),
+      ...(coupleData?.roteiro?.noite || []),
+    ].filter((p) => p.fotoUrl);
+    if (places.length <= 1) return;
+    const timer = setInterval(() => {
+      setPlaceIndex((prev) => (prev + 1) % places.length);
+    }, 2200);
+    return () => clearInterval(timer);
+  }, [isOpen, currentSlide, coupleData?.roteiro]);
+
+  /* ── cupid audio auto-play (slide 6, index 5) ──────────────────────── */
+  useEffect(() => {
+    if (!isOpen) return;
+    if (currentSlide === 5 && coupleData?.audioUrl && audioRef.current) {
+      audioRef.current.play().then(() => setAudioPlaying(true)).catch(() => {});
+    } else if (currentSlide !== 5 && audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+      setAudioPlaying(false);
+    }
+  }, [isOpen, currentSlide, coupleData?.audioUrl]);
+
   /* ── reset on open ──────────────────────────────────────────────────── */
   useEffect(() => {
     if (isOpen) {
@@ -188,8 +304,10 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
       setProgress(0);
       setIsPaused(false);
       setPhotoIndex(0);
+      setPlaceIndex(0);
       setAudioPlaying(false);
       setSlideKey(0);
+      setIsSharing(false);
     } else {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -200,11 +318,12 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
 
   /* ── navigation handlers ────────────────────────────────────────────── */
   const goNext = useCallback(() => {
-    if (currentSlide + 1 >= TOTAL_SLIDES) { onClose?.(); return; }
+    // On last slide, no advance
+    if (currentSlide >= TOTAL_SLIDES - 1) return;
     setCurrentSlide((s) => s + 1);
     setProgress(0);
     setSlideKey((k) => k + 1);
-  }, [currentSlide, onClose]);
+  }, [currentSlide]);
 
   const goPrev = useCallback(() => {
     if (currentSlide <= 0) { setProgress(0); return; }
@@ -239,6 +358,28 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     }
     setAudioPlaying(!audioPlaying);
   }, [audioPlaying]);
+
+  /* ── share handler ──────────────────────────────────────────────────── */
+  const handleShare = useCallback(async (e) => {
+    e.stopPropagation();
+    setIsSharing(true);
+    try {
+      const blob = await buildStoryImage(coupleData || {}, timeDiff || {});
+      const file = new File([blob], 'chamego-story.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+      } else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'chamego-story.png';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+    } catch {
+      /* usuário cancelou share — ok */
+    }
+    setIsSharing(false);
+  }, [coupleData, timeDiff]);
 
   /* ─────────────────────────────────────────────────────────────────────── */
   if (!isOpen) return null;
@@ -303,6 +444,14 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
           <span className="truncate max-w-[180px]">{data.musicaTitulo}</span>
         </div>
       )}
+
+      {/* Volume hint pill */}
+      <div
+        className="mt-4 rounded-full bg-white/20 backdrop-blur px-4 py-2 text-xs text-white"
+        style={stagger(5, 100)}
+      >
+        🔊 Aumente o som para sentir tudo
+      </div>
     </div>
   );
 
@@ -349,7 +498,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
       </div>
 
       {startDateFormatted && (
-        <p className="mt-8 font-serif text-sm italic text-pink-200/70" style={stagger(4)}>
+        <p className="mt-8 font-serif text-xl italic text-pink-200/70" style={stagger(4)}>
           Tudo começou em {startDateFormatted}…
         </p>
       )}
@@ -443,8 +592,12 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
   };
 
   const renderDateIdeas = () => {
-    const ideas = data.sugestaoDates || '';
-    const ideasPreview = ideas.length > 260 ? ideas.slice(0, 260) + '…' : ideas;
+    const places = [
+      ...(data.roteiro?.dia || []),
+      ...(data.roteiro?.noite || []),
+    ].filter((p) => p.fotoUrl);
+
+    const currentPlace = places[placeIndex];
 
     return (
       <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-amber-300 via-orange-400 to-rose-400 px-8 text-center">
@@ -454,7 +607,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
         <MapPin className="h-10 w-10 text-white drop-shadow" style={stagger(0, 0)} />
 
         <h2 className="mt-4 font-display text-2xl font-bold text-white drop-shadow sm:text-3xl" style={stagger(1)}>
-          Ideias de Encontro 💛
+          Os dates de vocês 💛
         </h2>
 
         {(data.cidade || data.bairro) && (
@@ -463,18 +616,38 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
           </p>
         )}
 
-        {ideasPreview && (
+        {places.length > 0 && currentPlace ? (
           <div
-            className="mt-6 max-w-xs rounded-3xl bg-white/20 backdrop-blur-sm border border-white/30 p-5 text-left text-sm leading-relaxed text-white/90"
-            style={stagger(3)}
+            key={placeIndex}
+            className="relative mt-6"
+            style={{
+              '--rot': `-3deg`,
+              animation: 'polaroidIn 0.5s ease-out both',
+            }}
           >
-            {ideasPreview}
+            {/* Polaroid frame */}
+            <div className="rounded-lg bg-white p-2 pb-10 shadow-xl shadow-orange-200/40">
+              <img
+                src={photoSrc(currentPlace.fotoUrl)}
+                alt={currentPlace.nome}
+                className="h-56 w-56 rounded-lg object-cover sm:h-64 sm:w-64"
+                draggable={false}
+              />
+              <div className="px-2 pt-2">
+                <p className="font-bold text-slate-900 text-sm leading-tight">{currentPlace.nome}</p>
+                {currentPlace.categoria && (
+                  <p className="text-slate-500 text-xs mt-0.5">{currentPlace.categoria}</p>
+                )}
+              </div>
+            </div>
+            {/* Counter */}
+            <p className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs text-white/80 font-medium drop-shadow">
+              {placeIndex + 1} / {places.length}
+            </p>
           </div>
-        )}
-
-        {!ideasPreview && (
+        ) : (
           <p className="mt-6 text-white/70 text-sm" style={stagger(3)}>
-            Em breve, sugestões incríveis para vocês 🌅
+            Os melhores cantinhos da cidade esperam por vocês 🌅
           </p>
         )}
       </div>
@@ -537,6 +710,44 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     </div>
   );
 
+  const renderShare = () => (
+    <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-indigo-950 to-slate-900 px-8 text-center">
+      {/* Ambient glow */}
+      <div className="pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 h-64 w-64 rounded-full bg-indigo-500/15 blur-3xl" />
+
+      <div className="relative z-30 flex flex-col items-center gap-5">
+        <span className="text-5xl" style={stagger(0, 0)}>💌</span>
+
+        <h2
+          className="font-display text-3xl font-bold text-white"
+          style={stagger(1)}
+        >
+          Reposte esse chamego
+        </h2>
+
+        <p
+          className="text-white/70 text-sm max-w-xs"
+          style={stagger(2)}
+        >
+          Mostre para o mundo o presente que você recebeu
+        </p>
+
+        <button
+          onClick={handleShare}
+          disabled={isSharing}
+          className="mt-2 rounded-full bg-white text-slate-950 font-semibold px-8 py-4 transition-transform active:scale-95 disabled:opacity-60"
+          style={stagger(3)}
+        >
+          {isSharing ? 'Gerando…' : 'Compartilhar ✨'}
+        </button>
+
+        <p className="text-white/40 text-xs" style={stagger(4)}>
+          Abre direto no Instagram Stories
+        </p>
+      </div>
+    </div>
+  );
+
   const slideRenderers = [
     renderCover,
     renderTimeTogether,
@@ -544,6 +755,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     renderHoroscope,
     renderDateIdeas,
     renderCupid,
+    renderShare,
   ];
 
   /* ═════════════════════ RENDER ═════════════════════ */
@@ -588,18 +800,20 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
           {slideRenderers[currentSlide]?.()}
         </div>
 
-        {/* ── invisible tap / hold zones ───────────────────────────────── */}
-        <div
-          className="absolute inset-0 z-20 flex"
-          onMouseDown={onHoldStart}
-          onMouseUp={(e) => { onHoldEnd(); handleTap(e); }}
-          onMouseLeave={onHoldEnd}
-          onTouchStart={onHoldStart}
-          onTouchEnd={(e) => { onHoldEnd(); handleTap(e); }}
-          onTouchCancel={onHoldEnd}
-        >
-          {/* Left half and right half handled by handleTap position */}
-        </div>
+        {/* ── invisible tap / hold zones (hidden on last slide) ────────── */}
+        {currentSlide < TOTAL_SLIDES - 1 && (
+          <div
+            className="absolute inset-0 z-20 flex"
+            onMouseDown={onHoldStart}
+            onMouseUp={(e) => { onHoldEnd(); handleTap(e); }}
+            onMouseLeave={onHoldEnd}
+            onTouchStart={onHoldStart}
+            onTouchEnd={(e) => { onHoldEnd(); handleTap(e); }}
+            onTouchCancel={onHoldEnd}
+          >
+            {/* Left half and right half handled by handleTap position */}
+          </div>
+        )}
       </div>
     </div>
   );

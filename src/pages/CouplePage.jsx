@@ -260,6 +260,9 @@ export default function CouplePage() {
     if (guess === solution) {
       setIsWordCorrect(true);
       confetti({ particleCount: 100, spread: 70, colors: ['#B3284F', '#C9355F', '#F7E3E9'] });
+      setTimeout(() => {
+        document.getElementById('roleta')?.scrollIntoView({ behavior: 'smooth' });
+      }, 400);
     } else {
       setWordError(true);
     }
@@ -797,58 +800,77 @@ export default function CouplePage() {
         {/* 11. Roleta */}
         {coupleData.opcoesRoleta && coupleData.opcoesRoleta.length > 0 && (
           <ScrollReveal>
-            <div className="card p-8">
+            <div id="roleta" className="card p-8">
               <p className="eyebrow mb-2">O destino decide</p>
               <h2 className="font-display text-2xl font-semibold text-ink-900 mb-6">Roleta do destino</h2>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-8">
-                {coupleData.opcoesRoleta.map((opt, idx) => (
-                  <div
-                    key={idx}
-                    className={`p-3.5 border rounded-2xl text-sm font-semibold transition-all ${
-                      rouletteIndex === idx
-                        ? 'border-wine-700 bg-wine-700 text-white scale-[1.03] shadow'
-                        : 'border-cream-200 bg-cream-50 text-ink-600'
-                    }`}
-                  >
-                    {opt}
-                  </div>
-                ))}
-              </div>
-
-              {rouletteWinner && (
-                <div className="mb-6 bg-wine-100 border border-wine-700/20 rounded-2xl p-5 text-center">
-                  <p className="eyebrow mb-1">O destino escolheu</p>
-                  <p className="font-display text-lg font-semibold text-wine-700">{rouletteWinner}</p>
+              {coupleData.palavraSecreta && !isWordCorrect ? (
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <span className="text-4xl">🔒</span>
+                  <p className="font-display text-xl font-semibold text-ink-900">Roleta trancada</p>
+                  <p className="text-ink-600 text-sm">Decifre a Palavra Secreta ali em cima para liberar a recompensa.</p>
                 </div>
-              )}
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-8">
+                    {coupleData.opcoesRoleta.map((opt, idx) => (
+                      <div
+                        key={idx}
+                        className={`p-3.5 border rounded-2xl text-sm font-semibold transition-all ${
+                          rouletteIndex === idx
+                            ? 'border-wine-700 bg-wine-700 text-white scale-[1.03] shadow'
+                            : 'border-cream-200 bg-cream-50 text-ink-600'
+                        }`}
+                      >
+                        {opt}
+                      </div>
+                    ))}
+                  </div>
 
-              <div className="flex justify-center">
-                <button
-                  onClick={handleSpinRoulette}
-                  disabled={isRouletteSpinning}
-                  className="btn-primary"
-                >
-                  {isRouletteSpinning ? 'Girando…' : 'Girar Roleta'}
-                </button>
-              </div>
+                  {rouletteWinner && (
+                    <div className="mb-6 bg-wine-100 border border-wine-700/20 rounded-2xl p-5 text-center">
+                      <p className="eyebrow mb-1">O destino escolheu</p>
+                      <p className="font-display text-lg font-semibold text-wine-700">{rouletteWinner}</p>
+                    </div>
+                  )}
+
+                  <div className="flex justify-center">
+                    <button
+                      onClick={handleSpinRoulette}
+                      disabled={isRouletteSpinning}
+                      className="btn-primary"
+                    >
+                      {isRouletteSpinning ? 'Girando…' : 'Girar Roleta'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </ScrollReveal>
         )}
 
-      </main>
+        {/* 12. Gran Finale — Retrospectiva */}
+        <ScrollReveal>
+          <section className="card p-10 text-center flex flex-col items-center gap-5">
+            <p className="eyebrow">O gran finale</p>
+            <h2 className="font-display text-3xl font-semibold text-ink-900">A retrospectiva de vocês</h2>
+            <p className="text-ink-600">Uma mini-série com a história do casal, em formato stories.</p>
+            <button
+              onClick={() => {
+                if (coupleData.musicaUrl && audioRef.current) {
+                  audioRef.current.currentTime = 0;
+                  audioRef.current.play().then(() => setIsAudioPlaying(true)).catch(() => {});
+                }
+                setIsRetroOpen(true);
+              }}
+              className="btn-primary px-10 py-4 text-base"
+            >
+              ▶ Ver nossa retrospectiva
+            </button>
+          </section>
+        </ScrollReveal>
 
-      {/* Retrospectiva floating button — centered bottom */}
-      {!isRetroOpen && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
-          <button
-            onClick={() => setIsRetroOpen(true)}
-            className="btn-primary px-10 py-4 text-base shadow-xl"
-          >
-            ▶ Ver nossa retrospectiva
-          </button>
-        </div>
-      )}
+      </main>
 
       <RetrospectiveStories
         isOpen={isRetroOpen}
