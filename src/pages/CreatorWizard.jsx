@@ -113,8 +113,8 @@ export default function CreatorWizard() {
     const parts = suggestion.split(',');
     const bairro = (parts[0] || '').trim();
     const cidadeRaw = (parts[1] || '').trim();
-    // strip trailing " - UF"
-    const cidade = cidadeRaw.replace(/\s*-\s*[A-Z]{2}.*$/, '').trim();
+    // strip trailing " - UF"; sugestão de segmento único vira cidade = bairro
+    const cidade = cidadeRaw.replace(/\s*-\s*[A-Z]{2}.*$/, '').trim() || bairro;
     setFormData(prev => ({ ...prev, bairro, cidade, roteiro: null }));
     setPlaceQuery(suggestion);
     setShowSuggestions(false);
@@ -188,6 +188,7 @@ export default function CreatorWizard() {
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       streamRef.current?.getTracks().forEach(t => t.stop());
     };
   }, []);
