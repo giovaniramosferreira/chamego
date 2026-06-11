@@ -38,8 +38,12 @@ function injectKeyframes() {
       from { opacity: 0; transform: scale(0.7) rotate(-8deg); }
       to   { opacity: 1; transform: scale(1) rotate(var(--rot, -3deg)); }
     }
-    @keyframes slideContent {
-      from { opacity: 0; transform: scale(0.96); }
+    @keyframes slideFadeOut {
+      from { opacity: 1; }
+      to   { opacity: 0; }
+    }
+    @keyframes slideFadeIn {
+      from { opacity: 0; transform: scale(1.02); }
       to   { opacity: 1; transform: scale(1); }
     }
   `;
@@ -216,6 +220,7 @@ async function buildStoryImage(data, td) {
    ═══════════════════════════════════════════════════════════════════════════ */
 export default function RetrospectiveStories({ isOpen, onClose, coupleData, timeDiff }) {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [prevSlide, setPrevSlide] = useState(null);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
@@ -228,9 +233,30 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
   const progressRef = useRef(null);
   const audioRef = useRef(null);
   const holdTimerRef = useRef(null);
+  const prevTimerRef = useRef(null);
+  const transitionToRef = useRef(null);
 
   // Inject CSS keyframes on mount
   useEffect(() => { injectKeyframes(); }, []);
+
+  /* ── transitionTo helper ────────────────────────────────────────────── */
+  const transitionTo = useCallback((nextIndex) => {
+    clearInterval(progressRef.current);
+    setPrevSlide((cur) => cur); // will be replaced below
+    setCurrentSlide((cur) => {
+      setPrevSlide(cur);
+      return nextIndex;
+    });
+    setProgress(0);
+    setSlideKey((k) => k + 1);
+    clearTimeout(prevTimerRef.current);
+    prevTimerRef.current = setTimeout(() => setPrevSlide(null), 400);
+  }, []);
+
+  // Keep ref fresh so it can be called from inside setProgress updater safely
+  useEffect(() => {
+    transitionToRef.current = transitionTo;
+  }, [transitionTo]);
 
   /* ── auto-advance progress ──────────────────────────────────────────── */
   useEffect(() => {
@@ -245,26 +271,20 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
 
     progressRef.current = setInterval(() => {
       setProgress((prev) => {
-        if (prev + step >= 100) {
-          // On last slide, freeze at 100 — don't auto-close
-          if (currentSlide === TOTAL_SLIDES - 1) {
-            return 100;
-          }
-          setCurrentSlide((s) => {
-            if (s + 1 >= TOTAL_SLIDES) {
-              return s;
-            }
-            setSlideKey((k) => k + 1);
-            return s + 1;
-          });
-          return 0;
+        // Guard: already at 100, do nothing (prevents double-fire)
+        if (prev >= 100) return 100;
+        const next = prev + step;
+        if (next >= 100) {
+          // Schedule transition outside the updater via microtask
+          queueMicrotask(() => transitionToRef.current?.(currentSlide + 1));
+          return 100;
         }
-        return prev + step;
+        return next;
       });
     }, interval);
 
     return () => clearInterval(progressRef.current);
-  }, [isOpen, isPaused, currentSlide, onClose]);
+  }, [isOpen, isPaused, currentSlide]);
 
   /* ── photo auto-cycle (slide 3) ─────────────────────────────────────── */
   useEffect(() => {
@@ -318,6 +338,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentSlide(0);
+      setPrevSlide(null);
       setProgress(0);
       setIsPaused(false);
       setPhotoIndex(0);
@@ -334,21 +355,27 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     }
   }, [isOpen]);
 
+  /* ── cleanup prevTimerRef on unmount ───────────────────────────────── */
+  useEffect(() => {
+    return () => {
+      clearTimeout(prevTimerRef.current);
+    };
+  }, []);
+
   /* ── navigation handlers ────────────────────────────────────────────── */
   const goNext = useCallback(() => {
-    // On last slide, no advance
     if (currentSlide >= TOTAL_SLIDES - 1) return;
-    setCurrentSlide((s) => s + 1);
-    setProgress(0);
-    setSlideKey((k) => k + 1);
-  }, [currentSlide]);
+    transitionTo(currentSlide + 1);
+  }, [currentSlide, transitionTo]);
 
   const goPrev = useCallback(() => {
-    if (currentSlide <= 0) { setProgress(0); return; }
-    setCurrentSlide((s) => s - 1);
-    setProgress(0);
-    setSlideKey((k) => k + 1);
-  }, [currentSlide]);
+    if (currentSlide <= 0) {
+      clearInterval(progressRef.current);
+      setProgress(0);
+      return;
+    }
+    transitionTo(currentSlide - 1);
+  }, [currentSlide, transitionTo]);
 
   const handleTap = useCallback((e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -546,19 +573,19 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
               animation: 'polaroidIn 0.5s ease-out both',
             }}
           >
-            {/* Polaroid frame */}
-            <div className="rounded-lg bg-white p-2 pb-10 shadow-xl shadow-pink-200/40">
+            {/* Polaroid frame — reinforced */}
+            <div className="bg-white p-3 pb-12 rounded-[4px] shadow-[0_12px_40px_rgba(0,0,0,0.25)]">
               <img
                 src={photoSrc(currentPhoto)}
                 alt={`Foto ${photoIndex + 1}`}
-                className="h-56 w-56 rounded object-cover sm:h-64 sm:w-64"
+                className="h-56 w-56 rounded object-cover sm:h-64 sm:w-64 block"
                 draggable={false}
               />
+              {/* Caption strip inside the polaroid */}
+              <p className="font-display italic text-neutral-700 text-sm text-center mt-2 leading-tight">
+                Nossos momentos · {photoIndex + 1}/{photos.length}
+              </p>
             </div>
-            {/* Photo counter */}
-            <p className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs text-pink-400 font-medium">
-              {photoIndex + 1} / {photos.length}
-            </p>
           </div>
         ) : (
           <p className="mt-8 text-pink-400 text-sm" style={stagger(1)}>Nenhuma foto adicionada ainda 💗</p>
@@ -643,23 +670,24 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
               animation: 'polaroidIn 0.5s ease-out both',
             }}
           >
-            {/* Polaroid frame */}
-            <div className="rounded-lg bg-white p-2 pb-10 shadow-xl shadow-orange-200/40">
+            {/* Polaroid frame — reinforced */}
+            <div className="bg-white p-3 pb-12 rounded-[4px] shadow-[0_12px_40px_rgba(0,0,0,0.25)]">
               <img
                 src={photoSrc(currentPlace.fotoUrl)}
                 alt={currentPlace.nome}
-                className="h-56 w-56 rounded-lg object-cover sm:h-64 sm:w-64"
+                className="h-56 w-56 rounded object-cover sm:h-64 sm:w-64 block"
                 draggable={false}
               />
-              <div className="px-2 pt-2">
-                <p className="font-bold text-slate-900 text-sm leading-tight">{currentPlace.nome}</p>
+              {/* Caption strip inside the polaroid */}
+              <div className="px-1 mt-2">
+                <p className="font-bold text-neutral-800 text-sm leading-tight">{currentPlace.nome}</p>
                 {currentPlace.categoria && (
-                  <p className="text-slate-500 text-xs mt-0.5">{currentPlace.categoria}</p>
+                  <p className="font-display italic text-neutral-600 text-xs mt-0.5">{currentPlace.categoria}</p>
                 )}
               </div>
             </div>
-            {/* Counter */}
-            <p className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs text-white/80 font-medium drop-shadow">
+            {/* Counter outside frame */}
+            <p className="mt-2 text-xs text-white/80 font-medium drop-shadow text-center">
               {placeIndex + 1} / {places.length}
             </p>
           </div>
@@ -694,20 +722,21 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
               animation: 'polaroidIn 0.5s ease-out both',
             }}
           >
-            {/* Polaroid frame */}
-            <div className="rounded-lg bg-white p-2 pb-8 shadow-xl shadow-sky-900/40">
+            {/* Polaroid frame — reinforced */}
+            <div className="bg-white p-3 pb-12 rounded-[4px] shadow-[0_12px_40px_rgba(0,0,0,0.25)]">
               <img
                 src={photoSrc(currentViagem.fotoUrl)}
                 alt={currentViagem.lugar}
-                className="h-56 w-56 rounded object-cover sm:h-64 sm:w-64"
+                className="h-56 w-56 rounded object-cover sm:h-64 sm:w-64 block"
                 draggable={false}
               />
-              <div className="px-2 pt-2">
-                <p className="font-bold text-slate-900 text-sm leading-tight">📍 {currentViagem.lugar}</p>
-              </div>
+              {/* Caption strip inside the polaroid */}
+              <p className="font-display italic text-neutral-700 text-sm text-center mt-2 leading-tight">
+                📍 {currentViagem.lugar}
+              </p>
             </div>
-            {/* Counter */}
-            <p className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs text-white/80 font-medium drop-shadow">
+            {/* Counter outside frame */}
+            <p className="mt-2 text-xs text-white/80 font-medium drop-shadow text-center">
               {viagemIndex + 1} / {viagens.length}
             </p>
           </div>
@@ -858,13 +887,26 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
           <X className="h-4.5 w-4.5" />
         </button>
 
-        {/* ── slide content (fade + scale on change) ───────────────────── */}
-        <div
-          key={slideKey}
-          className="h-full w-full"
-          style={{ animation: 'slideContent 0.35s ease-out both' }}
-        >
-          {slideRenderers[currentSlide]?.()}
+        {/* ── slide content — two-layer crossfade ──────────────────────── */}
+        <div className="relative h-full w-full">
+          {/* Outgoing slide (fade out) */}
+          {prevSlide !== null && (
+            <div
+              key={`prev-${prevSlide}`}
+              className="absolute inset-0 h-full w-full pointer-events-none"
+              style={{ animation: 'slideFadeOut 0.4s ease-in both' }}
+            >
+              {slideRenderers[prevSlide]?.()}
+            </div>
+          )}
+          {/* Incoming slide (fade in + slight scale) */}
+          <div
+            key={slideKey}
+            className="h-full w-full"
+            style={{ animation: 'slideFadeIn 0.45s ease-out both' }}
+          >
+            {slideRenderers[currentSlide]?.()}
+          </div>
         </div>
 
         {/* ── invisible tap / hold zones (hidden on last slide) ────────── */}

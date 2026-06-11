@@ -441,27 +441,27 @@ export default function CouplePage() {
           </div>
         </ScrollReveal>
 
-        {/* 3. Fotos — large editorial carousel */}
+        {/* 3. Fotos — polaroid carousel */}
         {coupleData.fotos && coupleData.fotos.length > 0 && (
           <ScrollReveal>
-            <div className="w-full">
-              <div className="relative w-full aspect-[4/5] sm:aspect-[4/3] rounded-[2rem] overflow-hidden bg-cream-100">
-                {coupleData.fotos.map((photo, index) => (
-                  <img
-                    key={index}
-                    src={photo}
-                    alt={`Foto ${index + 1}`}
-                    className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
-                      currentPhotoIndex === index ? 'opacity-100' : 'opacity-0'
-                    }`}
-                  />
-                ))}
-              </div>
-              {coupleData.fotos.length > 1 && (
-                <p className="text-center text-sm text-ink-400 mt-3">
-                  {currentPhotoIndex + 1} / {coupleData.fotos.length}
+            <div className="flex justify-center px-2">
+              <div className="bg-white p-3 sm:p-4 pb-16 sm:pb-20 rounded-[6px] shadow-[0_18px_50px_rgba(26,23,20,0.18)] rotate-[-1.5deg] hover:rotate-0 transition-transform max-w-md w-full">
+                <div className="relative aspect-square overflow-hidden bg-cream-100">
+                  {coupleData.fotos.map((photo, index) => (
+                    <img
+                      key={index}
+                      src={photo}
+                      alt={`Foto ${index + 1}`}
+                      className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
+                        currentPhotoIndex === index ? 'opacity-100' : 'opacity-0'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className="font-display italic text-ink-600 text-center text-base mt-4">
+                  Nossos momentos{coupleData.fotos.length > 1 ? ` · ${currentPhotoIndex + 1}/${coupleData.fotos.length}` : ''} 📸
                 </p>
-              )}
+              </div>
             </div>
           </ScrollReveal>
         )}
@@ -563,7 +563,67 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 7. Roteiro de Dates — collapsible groups */}
+        {/* 7. Conquistas — timeline (before Roteiro) */}
+        {coupleData.conquistas && coupleData.conquistas.length > 0 && (
+          <div className="card p-8">
+            <p className="eyebrow mb-2">Nossa linha do tempo</p>
+            <h2 className="font-display text-2xl font-semibold text-ink-900 mb-8">Grandes marcos juntos</h2>
+            <div className="relative border-l-2 border-cream-200 ml-4 flex flex-col gap-10">
+              {coupleData.conquistas.map((item, idx) => (
+                <ScrollReveal key={idx}>
+                  <div className="relative pl-8">
+                    <div className="absolute -left-[11px] top-2 w-5 h-5 rounded-full bg-wine-700 border-2 border-white shadow flex items-center justify-center text-[9px] font-semibold text-white">
+                      {idx + 1}
+                    </div>
+                    <div className="card overflow-hidden flex flex-col sm:flex-row gap-0">
+                      {item.fotoUrl && (
+                        <img
+                          src={item.fotoUrl}
+                          alt={item.titulo}
+                          className="w-full sm:w-32 h-32 object-cover flex-shrink-0"
+                        />
+                      )}
+                      <div className="flex flex-col justify-center gap-1.5 p-5">
+                        <h4 className="font-display text-lg font-semibold text-ink-900">{item.titulo}</h4>
+                        <p className="text-sm text-ink-600 leading-relaxed">{item.descricao}</p>
+                      </div>
+                    </div>
+                  </div>
+                </ScrollReveal>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 8. Viagens — Nossa jornada (right after Conquistas) */}
+        {coupleData.viagens?.length > 0 && (
+          <ScrollReveal>
+            <div className="flex flex-col gap-6">
+              <div>
+                <p className="eyebrow mb-2">Nossa jornada</p>
+                <h2 className="font-display text-3xl font-semibold text-ink-900">
+                  Os lugares que já foram nossos
+                </h2>
+              </div>
+              <div className="flex gap-4 overflow-x-auto snap-x pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:overflow-visible">
+                {coupleData.viagens.map((v, idx) => (
+                  <div key={idx} className="card overflow-hidden flex-shrink-0 w-64 snap-center sm:w-auto">
+                    <img
+                      src={v.fotoUrl}
+                      alt={v.lugar}
+                      className="aspect-[4/3] w-full object-cover"
+                    />
+                    <div className="p-4">
+                      <p className="font-display text-lg text-ink-900">📍 {v.lugar}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </ScrollReveal>
+        )}
+
+        {/* 9. Roteiro de Dates — collapsible groups */}
         {coupleData.roteiro && (coupleData.roteiro.dia?.length || coupleData.roteiro.noite?.length) && (
           <ScrollReveal>
             <div className="flex flex-col gap-6">
@@ -686,7 +746,7 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 8. Áudio + Cupido */}
+        {/* 10. Áudio + Cupido */}
         {(coupleData.cupidoComentario || coupleData.audioUrl) && (
           <ScrollReveal>
             <div className="card p-8">
@@ -726,67 +786,7 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 9. Conquistas — timeline */}
-        {coupleData.conquistas && coupleData.conquistas.length > 0 && (
-          <div className="card p-8">
-            <p className="eyebrow mb-2">Nossa linha do tempo</p>
-            <h2 className="font-display text-2xl font-semibold text-ink-900 mb-8">Grandes marcos juntos</h2>
-            <div className="relative border-l-2 border-cream-200 ml-4 flex flex-col gap-10">
-              {coupleData.conquistas.map((item, idx) => (
-                <ScrollReveal key={idx}>
-                  <div className="relative pl-8">
-                    <div className="absolute -left-[11px] top-2 w-5 h-5 rounded-full bg-wine-700 border-2 border-white shadow flex items-center justify-center text-[9px] font-semibold text-white">
-                      {idx + 1}
-                    </div>
-                    <div className="card overflow-hidden flex flex-col sm:flex-row gap-0">
-                      {item.fotoUrl && (
-                        <img
-                          src={item.fotoUrl}
-                          alt={item.titulo}
-                          className="w-full sm:w-32 h-32 object-cover flex-shrink-0"
-                        />
-                      )}
-                      <div className="flex flex-col justify-center gap-1.5 p-5">
-                        <h4 className="font-display text-lg font-semibold text-ink-900">{item.titulo}</h4>
-                        <p className="text-sm text-ink-600 leading-relaxed">{item.descricao}</p>
-                      </div>
-                    </div>
-                  </div>
-                </ScrollReveal>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 10. Viagens — Nossa jornada */}
-        {coupleData.viagens?.length > 0 && (
-          <ScrollReveal>
-            <div className="flex flex-col gap-6">
-              <div>
-                <p className="eyebrow mb-2">Nossa jornada</p>
-                <h2 className="font-display text-3xl font-semibold text-ink-900">
-                  Os lugares que já foram nossos
-                </h2>
-              </div>
-              <div className="flex gap-4 overflow-x-auto snap-x pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:overflow-visible">
-                {coupleData.viagens.map((v, idx) => (
-                  <div key={idx} className="card overflow-hidden flex-shrink-0 w-64 snap-center sm:w-auto">
-                    <img
-                      src={v.fotoUrl}
-                      alt={v.lugar}
-                      className="aspect-[4/3] w-full object-cover"
-                    />
-                    <div className="p-4">
-                      <p className="font-display text-lg text-ink-900">📍 {v.lugar}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </ScrollReveal>
-        )}
-
-        {/* 11. Palavra Secreta (ex-10) */}
+        {/* 11. Palavra Secreta */}
         {coupleData.palavraSecreta && (
           <ScrollReveal>
             <div className="card p-8">
@@ -825,7 +825,7 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 12. Roleta (ex-11) */}
+        {/* 12. Roleta */}
         {coupleData.opcoesRoleta && coupleData.opcoesRoleta.length > 0 && (
           <ScrollReveal>
             <div id="roleta" className="card p-8">
@@ -877,7 +877,7 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 13. Gran Finale — Retrospectiva (ex-12) */}
+        {/* 13. Gran Finale — Retrospectiva */}
         <ScrollReveal>
           <section className="card p-10 text-center flex flex-col items-center gap-5">
             <p className="eyebrow">O gran finale</p>
