@@ -67,6 +67,17 @@ export function createDb(file) {
         .run(String(id), slug, status, amount);
     },
     getPayment(id) { return sqlite.prepare('SELECT * FROM payments WHERE id = ?').get(String(id)); },
+    listPages() {
+      return sqlite.prepare('SELECT slug, status, email, created_at, updated_at, data FROM pages ORDER BY created_at DESC').all()
+        .map(r => {
+          let titulo = '', dataExpiracao = '';
+          try { const d = JSON.parse(r.data); titulo = d.titulo || ''; dataExpiracao = d.dataExpiracao || ''; } catch { /* ignora corrompido */ }
+          return { slug: r.slug, titulo, status: r.status, email: r.email, dataExpiracao, criadaEm: r.created_at, atualizadaEm: r.updated_at };
+        });
+    },
+    listPayments() {
+      return sqlite.prepare('SELECT * FROM payments ORDER BY created_at DESC').all();
+    },
   };
 }
 

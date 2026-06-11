@@ -76,6 +76,27 @@ app.get('/api/config', (req, res) => {
   res.json(getPricing());
 });
 
+// Visão administrativa — exige ADMIN_TOKEN configurado e correto.
+// Uso: /api/admin/overview?token=SEU_TOKEN
+app.get('/api/admin/overview', (req, res) => {
+  const token = process.env.ADMIN_TOKEN;
+  if (!token || req.query.token !== token) return res.status(404).end();
+  const pages = db.listPages();
+  const payments = db.listPayments();
+  const aprovados = payments.filter(p => p.status === 'approved');
+  res.json({
+    totais: {
+      paginas: pages.length,
+      publicadas: pages.filter(p => p.status === 'published').length,
+      rascunhos: pages.filter(p => p.status === 'draft').length,
+      pagamentosAprovados: aprovados.length,
+      receita: Math.round(aprovados.reduce((s, p) => s + (p.amount || 0), 0) * 100) / 100,
+    },
+    paginas: pages,
+    pagamentos: payments,
+  });
+});
+
 // Endpoint to fetch page by slug (published only)
 app.get('/api/pages/:slug', (req, res) => {
   const page = db.getPageBySlug(req.params.slug);
