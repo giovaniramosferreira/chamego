@@ -263,6 +263,29 @@ app.post('/api/webhooks/mercadopago', async (req, res) => {
   } catch (e) { console.error('webhook', e); res.sendStatus(200); }
 });
 
+// Busca de músicas (iTunes Search) — proxy server-side: o navegador sofre
+// CORS/rate-limit ao chamar a Apple direto, o servidor não.
+app.get('/api/music/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ results: [] });
+    const upstream = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&limit=6&country=BR`);
+    if (!upstream.ok) return res.status(502).json({ results: [], error: 'Busca indisponível agora' });
+    const data = await upstream.json();
+    const results = (data.results || []).map(s => ({
+      trackId: s.trackId,
+      trackName: s.trackName,
+      artistName: s.artistName,
+      artworkUrl60: s.artworkUrl60,
+      previewUrl: s.previewUrl,
+    })).filter(s => s.previewUrl);
+    res.json({ results });
+  } catch (e) {
+    console.error('music search error', e);
+    res.status(502).json({ results: [], error: 'Busca indisponível agora' });
+  }
+});
+
 // Cupom promocional — publica sem pagamento. Ativo apenas enquanto a env
 // COUPON_CODE existir; para desativar, basta remover a variável no Render.
 app.post('/api/coupons/redeem', (req, res) => {

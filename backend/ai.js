@@ -74,11 +74,13 @@ export function getSimulatedHoroscope(nome1, signo1, nome2, signo2) {
     `Bênção estelar: Lembrem-se sempre de celebrar a sorte do reencontro de vocês nesta jornada. Que a luz cósmica que os une hoje continue guiando seus passos por todos os ciclos que virão. 🔮🌙`,
   ];
 
-  const selectedIntro = intros[Math.floor(Math.random() * intros.length)];
-  const selectedPonto = pontosFortes[Math.floor(Math.random() * pontosFortes.length)];
-  const selectedConselho = conselhos[Math.floor(Math.random() * conselhos.length)];
-
-  return `${selectedIntro}\n\n${selectedPonto}\n\n${selectedConselho}`;
+  // Versão curta: 1 frase de cada bloco, mantendo o clima sem alongar a seção
+  void intros; void pontosFortes; void conselhos;
+  const curtas = [
+    `${signo1.symbol} e ${signo2.symbol} se encontraram e o céu aprovou: a energia de ${signo1.name} dá calor, a de ${signo2.name} dá profundidade — cumplicidade rara, daquelas que se entende sem palavras. Que as estrelas sigam iluminando ${nome1} e ${nome2}. ✨`,
+    `Entre ${signo1.name} e ${signo2.name} existe um alinhamento de rara sintonia: um sustenta os sonhos do outro e a parceria vira porto e aventura ao mesmo tempo. O universo conspira por ${nome1} e ${nome2}. 🌌`,
+  ];
+  return curtas[Math.floor(Math.random() * curtas.length)];
 }
 
 // ─────────────────────────────────────────────
@@ -104,10 +106,10 @@ Dados de astrologia:
 
 Instruções importantes:
 1. Responda em português do Brasil.
-2. Escreva de 3 a 4 parágrafos curtos e poéticos.
-3. Descreva a compatibilidade cósmica entre os signos de ${signo1.name} e ${signo2.name}.
-4. Destaque explicitamente pelo menos 2 pontos fortes da relação (como cumplicidade, bom humor, apoio recíproco ou comunicação profunda).
-5. Termine com um conselho carinhoso dos astros para o casal.`;
+2. Seja SUCINTO: escreva 1 parágrafo único de no máximo 60 palavras — denso de amor, sem enrolação.
+3. Descreva a compatibilidade cósmica entre ${signo1.name} e ${signo2.name} citando 1 ponto forte da relação.
+4. Feche com meia frase de bênção dos astros.
+5. Responda APENAS o parágrafo, sem título nem comentários.`;
 }
 
 function promptCarta({ titulo, nome1, nome2, dataInicio, mensagem, conquistas }) {
@@ -122,7 +124,7 @@ function promptCarta({ titulo, nome1, nome2, dataInicio, mensagem, conquistas })
     ? conquistas.map((c, i) => `${i + 1}. ${c.titulo}: ${c.descricao}`).join('\n')
     : 'Nenhuma conquista registrada ainda';
 
-  return `Você é um poeta romântico brasileiro extremamente talentoso. Escreva uma carta de amor profundamente emocionante e personalizada para o casal "${titulo}".
+  return `Você é um poeta romântico brasileiro extremamente talentoso. Escreva um POEMA curto, emocionante e personalizado para o casal "${titulo}".
 
 DADOS DO CASAL:
 - Nomes: ${nome1 || 'Pessoa 1'} e ${nome2 || 'Pessoa 2'}
@@ -131,13 +133,11 @@ DADOS DO CASAL:
 - Conquistas juntos: ${conquistasText}
 
 REGRAS:
-1. A carta deve ter 4-5 parágrafos, ser profundamente emotiva mas não piegas
-2. Mencione detalhes específicos fornecidos (conquistas, tempo juntos, etc.)
-3. Use metáforas bonitas e linguagem poética brasileira contemporânea
-4. Comece com "Queridos ${nome1 || 'amor'} e ${nome2 || 'amor'},"
-5. Termine com uma assinatura criativa como "Com todo amor do universo, ✨💌"
-6. Escreva APENAS a carta, sem explicações ou comentários extras
-7. A carta deve ser em português brasileiro informal e carinhoso`;
+1. Exatamente 3 estrofes de 4 versos curtos (12 versos no total)
+2. Verso livre, linguagem poética brasileira contemporânea — emocionante, não piegas
+3. Use os nomes ${nome1 || 'amor'} e ${nome2 || 'amor'} e pelo menos 1 detalhe concreto dos dados (tempo juntos, conquista ou mensagem)
+4. Termine com a assinatura "— com amor, o universo ✨" em linha própria
+5. Escreva APENAS o poema, sem título, sem explicações`;
 }
 
 function promptScore({ nome1, nome2, signo1, signo2, dataInicio, conquistas, mensagem }) {
@@ -166,7 +166,7 @@ Gere scores realistas mas otimistas que reflitam a compatibilidade astrológica 
 // ─────────────────────────────────────────────
 // Fallbacks
 // ─────────────────────────────────────────────
-function fallbackCarta({ nome1, nome2, dataInicio, mensagem, conquistas }) {
+function fallbackCarta({ nome1, nome2, dataInicio, conquistas }) {
   const start = new Date(dataInicio);
   const now = new Date();
   const diffMs = now - start;
@@ -174,17 +174,27 @@ function fallbackCarta({ nome1, nome2, dataInicio, mensagem, conquistas }) {
   const years = Math.floor(totalDays / 365);
   const months = Math.floor((totalDays % 365) / 30);
 
-  return `Queridos ${nome1 || 'amor'} e ${nome2 || 'amor'},
+  const tempoVerso = years > 0
+    ? `${years} ${years === 1 ? 'ano' : 'anos'} de sol dividido,`
+    : `${totalDays} dias de sol dividido,`;
+  void months;
 
-Existem histórias que a gente lê e se emociona. E existem histórias que a gente vive e transborda. A de vocês é do segundo tipo — daquelas que fazem o coração acelerar só de lembrar como tudo começou, há ${totalDays} dias atrás, quando o universo decidiu que era hora de juntar duas almas que já se procuravam há tempo demais.
+  return `${nome1 || 'Amor'} encontrou em ${nome2 || 'amor'}
+o que nem sabia procurar:
+um riso que vira casa,
+um abraço que vira lar.
 
-${totalDays} dias. São ${years > 0 ? years + ' anos e ' + months + ' meses' : months + ' meses'} de manhãs divididas, de cafés compartilhados, de abraços que curam o dia ruim e de sorrisos que iluminam até as noites mais escuras. ${conquistas && conquistas.length > 0 ? 'Vocês já conquistaram tanto juntos — ' + conquistas.map(c => c.titulo).join(', ') + ' — e cada passo dado lado a lado só confirma: vocês são melhores juntos do que separados.' : 'E cada dia juntos é uma nova conquista, um novo capítulo dessa história linda.'}
+${tempoVerso}
+de cafés, de chão, de sorte —
+${conquistas && conquistas.length > 0 ? `cada conquista de vocês` : 'cada pequeno dia de vocês'}
+fez o amor ficar mais forte.
 
-${mensagem ? `Quando um de vocês escreveu "${mensagem.substring(0, 100)}...", ficou claro que esse amor não é feito de grandes declarações públicas, mas de verdades sussurradas no ouvido, de mãos dadas debaixo da mesa e de olhares que dizem "eu escolho você, de novo e de novo".` : 'O amor de vocês tem aquela rara qualidade de ser, ao mesmo tempo, um porto seguro e uma grande aventura. É a certeza de ter para onde voltar e a coragem de explorar o mundo juntos.'}
+Que o tempo seja testemunha
+do que os olhos já sabiam:
+vocês dois, desde o começo,
+era tudo o que os dias queriam.
 
-Que vocês continuem escrevendo essa história com a mesma paixão do primeiro beijo e a sabedoria de quem já atravessou tempestades e saiu de mãos dadas do outro lado. O melhor ainda está por vir — e eu tenho certeza que vocês vão viver cada segundo como se fosse o primeiro dia.
-
-Com todo amor do universo, ✨💌`;
+— com amor, o universo ✨`;
 }
 
 function fallbackScore({ nome1, nome2, dataInicio }) {

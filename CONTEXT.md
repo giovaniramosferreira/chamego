@@ -30,8 +30,15 @@ Ativação da Página do Casal após confirmação de pagamento Pix (pay-to-publ
 Único produto à venda: R$19,90, pagamento Pix único, página no ar para sempre. (Substitui os antigos planos 24h/Para Sempre e o upsell de mini-série.)
 
 **Roteiro de Dates**:
-Cards Dia (café, passeio, brunch) e Noite (restaurante, bar, sobremesa) com lugares reais do Google Places — foto, nota, faixa de preço, link Maps — cada um com uma frase romântica gerada por IA.
+Cards Dia (café, passeio, brunch) e Noite (restaurante, bar, sobremesa) com lugares reais do Google Places — foto, nota, faixa de preço, link Maps — cada um com uma frase romântica gerada por IA. Na Página do Casal aparecem fechados (dropdown); o Destinatário abre quando quiser.
 _Avoid_: sugestão de encontros, dates mocados
+
+**O Céu de Vocês**:
+Seção celestial única da Página do Casal: signos, score de compatibilidade, sinastria curta, mapa estelar e fase da lua — substitui as antigas seções separadas (Score, Sinastria, Mapa Estelar, Lua).
+
+**Poema do Casal**:
+Texto de IA curto (3 estrofes) que substitui a antiga carta de amor longa.
+_Avoid_: carta de amor (formato antigo, extenso)
 
 **Exclusão**:
 Remoção da Página do Casal a pedido do Criador, feita manualmente via suporte no WhatsApp (sem login/self-service por enquanto).
