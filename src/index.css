@@ -1,8 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600&family=Inter:wght@400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600;700;800;900&family=Permanent+Marker&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-cream-50 text-ink-900 font-sans antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-full bg-wine-700 text-white font-semibold px-7 py-4 text-base transition-all active:scale-[0.98] hover:bg-wine-600 shadow-sm min-h-[52px]; }
+  .btn-ghost   { @apply inline-flex items-center justify-center gap-2 rounded-full border border-ink-900/15 bg-white/60 text-ink-900 font-semibold px-6 py-3.5 min-h-[48px]; }
+  .input-base  { @apply w-full rounded-2xl border border-ink-900/15 bg-white px-5 py-4 text-base text-ink-900 placeholder:text-ink-400 focus:outline-none focus:border-wine-700 min-h-[52px]; }
+  .card        { @apply bg-white rounded-3xl border border-ink-900/10 shadow-[0_1px_3px_rgba(26,23,20,0.06)]; }
+  .eyebrow     { @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-400; }
+}
 
   /* Redesigned LovePanda premium pink buttons */
   .btn-3d-primary {

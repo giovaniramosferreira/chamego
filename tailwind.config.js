@@ -31,11 +31,14 @@ export default {
           700: '#c80f2c',
           800: '#a50f28',
           900: '#490212', // Dark border red
-        }
+        },
+        cream: { 50: '#FAF7F2', 100: '#F3EDE3', 200: '#E8DFD0' },
+        ink: { 900: '#1A1714', 600: '#5C554C', 400: '#948C80' },
+        wine: { 700: '#B3284F', 600: '#C9355F', 100: '#F7E3E9' },
       },
       fontFamily: {
-        sans: ['Nunito', 'sans-serif'],
-        display: ['Cormorant Garamond', 'serif'],
+        display: ['Fraunces', 'Georgia', 'serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
         marker: ['Permanent Marker', 'cursive'],
       },
       animation: {
