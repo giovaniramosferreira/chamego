@@ -1,233 +1,288 @@
-import { useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Heart, ShieldCheck, CreditCard, QrCode, Copy, Check, Sparkles, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { QRCodeCanvas } from 'qrcode.react';
 import confetti from 'canvas-confetti';
 
 export default function CheckoutPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const slug = searchParams.get('slug') || '';
-  const plan = searchParams.get('plan') || 'forever';
-  const email = searchParams.get('email') || '';
+  const slug =
+    searchParams.get('slug') ||
+    sessionStorage.getItem('chamego-slug') ||
+    '';
 
-  const price = plan === 'forever' ? 'R$ 39,90' : 'R$ 24,90';
-  const planName = plan === 'forever' ? 'Plano Vitalício' : 'Plano Acesso 24 Horas';
+  // ── State machine: 'form' | 'pix' | 'success'
+  const [stage, setStage] = useState('form');
 
-  const [paymentMethod, setPaymentMethod] = useState('pix');
-  const [copiedPix, setCopiedPix] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  // form state
+  const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [formError, setFormError] = useState('');
 
-  // Auto confirm after 10s for simulation or on-click
-  const handleConfirmPayment = async () => {
-    setIsProcessing(true);
-    
-    // Retrieve pending data from sessionStorage
-    const pendingDataStr = sessionStorage.getItem(`couple-page-draft-${slug}`);
-    let pendingData = null;
-    if (pendingDataStr) {
-      pendingData = JSON.parse(pendingDataStr);
-    }
+  // pix state
+  const [qrCode, setQrCode] = useState('');
+  const [qrCodeBase64, setQrCodeBase64] = useState('');
+  const [copied, setCopied] = useState(false);
 
+  // success
+  const qrRef = useRef(null);
+  const pollingRef = useRef(null);
+
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
+  // ── No slug: friendly empty state
+  if (!slug) {
+    return (
+      <div className="min-h-screen bg-cream-50 flex flex-col items-center justify-center px-5 text-center">
+        <h1 className="font-display italic text-3xl text-wine-700 mb-4">Hmm…</h1>
+        <p className="text-ink-600 mb-6">Parece que você chegou aqui sem uma página em criação.</p>
+        <Link to="/criar" className="btn-primary">Criar nossa página</Link>
+      </div>
+    );
+  }
+
+  // ── Handlers
+  async function handleGeneratePix() {
+    setIsLoading(true);
+    setFormError('');
     try {
-      const payload = {
-        slug,
-        email,
-        status: 'paid', // Active paid status!
-        data: pendingData ? {
-          titulo: pendingData.titulo,
-          dataInicio: pendingData.dataInicio,
-          mensagem: pendingData.mensagem,
-          fotos: pendingData.fotos,
-          musicaTitulo: pendingData.musicaTitulo,
-          musicaUrl: pendingData.musicaUrl
-        } : {}
-      };
-
-      const response = await fetch('/api/orders', {
+      const res = await fetch('/api/payments', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, email: email.trim() || undefined }),
       });
+      const data = await res.json();
 
-      if (response.ok) {
-        setPaymentSuccess(true);
-        confetti({
-          particleCount: 150,
-          spread: 80,
-          origin: { y: 0.6 }
-        });
-
-        setTimeout(() => {
-          navigate(`/p/${slug}`);
-        }, 3000);
+      if (!res.ok) {
+        setFormError(data.error || 'Erro ao gerar Pix. Tente novamente.');
+        return;
       }
-    } catch (e) {
-      console.error("Payment confirmation failed:", e);
+
+      if (data.alreadyPublished) {
+        setStage('success');
+        return;
+      }
+
+      setQrCode(data.qrCode);
+      setQrCodeBase64(data.qrCodeBase64);
+      setStage('pix');
+      startPolling(data.paymentId);
+    } catch {
+      setFormError('Falha de conexão. Verifique sua internet e tente novamente.');
     } finally {
-      setIsProcessing(false);
+      setIsLoading(false);
     }
-  };
+  }
 
-  const handleCopyPix = () => {
-    navigator.clipboard.writeText("00020126360014br.gov.bcb.pix0114chave-simulada5802BR5913PixSimulado6009SAOPAULO62070503***6304D1B2");
-    setCopiedPix(true);
-    setTimeout(() => setCopiedPix(false), 2000);
-  };
+  function startPolling(id) {
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payments/${id}/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === 'approved') {
+          clearInterval(pollingRef.current);
+          localStorage.setItem('couple-page-last', slug);
+          confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+          setStage('success');
+        }
+      } catch {
+        // silently ignore polling errors
+      }
+    }, 4000);
+  }
 
+  function handleCopy() {
+    navigator.clipboard.writeText(qrCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const publicUrl = `${window.location.origin}/p/${slug}`;
+
+  function handleCopyLink() {
+    navigator.clipboard.writeText(publicUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleDownloadQR() {
+    const container = qrRef.current;
+    if (!container) return;
+    const canvas = container.querySelector('canvas');
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'chamego-qrcode.png';
+    a.click();
+  }
+
+  // ── Render
   return (
-    <div className="min-h-screen bg-sugar-50 text-slate-800 font-sans flex flex-col justify-between select-none">
-      
-      <header className="border-b border-pink-100 bg-white/80 backdrop-blur-md py-4 px-6 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-2">
-          <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
-          <span className="font-display font-black text-lg text-pink-600 tracking-tight">Chamego</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-emerald-600 font-black text-xs">
-          <ShieldCheck className="w-4.5 h-4.5" /> Ambiente Seguro
-        </div>
+    <div className="min-h-screen bg-cream-50 flex flex-col">
+      {/* Minimal header */}
+      <header className="py-5 px-5 border-b border-ink-900/10 bg-cream-50">
+        <Link to="/" className="font-display italic text-wine-700 text-xl">
+          Chamego
+        </Link>
       </header>
 
-      <main className="flex-1 max-w-xl mx-auto w-full px-5 py-8 flex flex-col justify-center">
-        
-        {paymentSuccess ? (
-          /* Success Screen */
-          <div className="bg-white border border-pink-100 rounded-[32px] p-8 shadow-xl shadow-pink-100/30 text-center flex flex-col items-center gap-4 animate-bounce">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-3xl shadow-sm">
-              🎉
-            </div>
-            <h1 className="text-2xl font-black text-slate-900 font-display">Pagamento Confirmado!</h1>
-            <p className="text-sm text-slate-500 font-bold leading-relaxed max-w-sm">
-              Sua surpresa de amor está no ar! Estamos te redirecionando para a sua página final em segundos...
-            </p>
-            <Loader2 className="w-6 h-6 text-emerald-500 animate-spin mt-2" />
-          </div>
-        ) : (
-          /* Checkout Screen */
-          <div className="bg-white border border-pink-100 rounded-[32px] p-6 shadow-xl shadow-pink-100/30 flex flex-col gap-6">
-            
-            {/* Summary */}
-            <div className="bg-slate-50 border border-pink-100 rounded-2xl p-4 flex justify-between items-center">
-              <div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-wide">Produto</p>
-                <p className="font-black text-slate-800 text-sm mt-0.5">{planName}</p>
-                <p className="text-[10px] text-slate-400 font-bold mt-0.5">{email}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs font-black text-slate-400 uppercase tracking-wide">Total</p>
-                <p className="font-black text-pink-600 text-lg mt-0.5">{price}</p>
-              </div>
+      <main className="flex-1 flex flex-col items-center justify-center px-5 py-10">
+        {stage === 'form' && (
+          <div className="card max-w-md w-full p-8 flex flex-col gap-6">
+            <div>
+              <p className="eyebrow mb-2">Finalizar</p>
+              <h1 className="font-display text-3xl text-ink-900">
+                Publicar a página de vocês
+              </h1>
             </div>
 
-            {/* Selector Method */}
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                onClick={() => setPaymentMethod('pix')}
-                className={`py-3 border font-black text-sm rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all ${
-                  paymentMethod === 'pix' 
-                    ? 'border-pink-500 bg-pink-50/60 text-pink-600 shadow-md shadow-pink-100/20' 
-                    : 'border-pink-100 bg-white text-slate-500 hover:border-pink-300'
-                }`}
-              >
-                <QrCode className="w-4 h-4" /> Pix Copia e Cola
-              </button>
-              <button 
-                onClick={() => setPaymentMethod('card')}
-                className={`py-3 border font-black text-sm rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all ${
-                  paymentMethod === 'card' 
-                    ? 'border-pink-500 bg-pink-50/60 text-pink-600 shadow-md shadow-pink-100/20' 
-                    : 'border-pink-100 bg-white text-slate-500 hover:border-pink-300'
-                }`}
-              >
-                <CreditCard className="w-4 h-4" /> Cartão de Crédito
-              </button>
+            {/* Summary row */}
+            <div className="flex items-center justify-between py-4 border-t border-b border-ink-900/10">
+              <span className="text-ink-600 text-sm">Página do Casal · vitalícia</span>
+              <span className="font-display text-4xl text-ink-900 leading-none">R$ 19,90</span>
             </div>
 
-            {/* PIX Content */}
-            {paymentMethod === 'pix' ? (
-              <div className="flex flex-col items-center gap-4 py-2">
-                <div className="border border-pink-100 p-3 bg-white rounded-2xl shadow-sm">
-                  {/* Fake QR code representation */}
-                  <div className="w-36 h-36 bg-slate-100 flex items-center justify-center border border-dashed border-slate-300">
-                    <QrCode className="w-20 h-20 text-slate-800" />
-                  </div>
-                </div>
-                
-                <p className="text-[11px] font-bold text-slate-400 text-center max-w-xs leading-relaxed">
-                  Escaneie o QR Code acima ou use a chave copia e cola abaixo para efetuar o pagamento.
-                </p>
+            {/* Optional email */}
+            <div className="flex flex-col gap-2">
+              <label htmlFor="checkout-email" className="text-sm text-ink-600">
+                E-mail <span className="text-ink-400">(opcional) — para recibo</span>
+              </label>
+              <input
+                id="checkout-email"
+                type="email"
+                inputMode="email"
+                className="input-base"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
 
-                <div className="w-full flex gap-2">
-                  <input 
-                    type="text" 
-                    readOnly
-                    value="00020126360014br.gov.bcb.pix0114chave-simulada5802BR..."
-                    className="flex-1 px-3 py-2 border border-pink-200 bg-slate-50 rounded-xl font-bold text-xs text-slate-500 focus:outline-none"
-                  />
-                  <button 
-                    onClick={handleCopyPix}
-                    className="px-4 py-2 bg-pink-600 border border-transparent text-white rounded-xl font-black text-xs hover:bg-pink-700 shadow-md shadow-pink-600/20 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {copiedPix ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copiedPix ? 'Copiado!' : 'Copiar'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Card Content */
-              <div className="flex flex-col gap-3">
-                <input 
-                  type="text" 
-                  placeholder="Número do Cartão" 
-                  disabled
-                  className="w-full px-4 py-2.5 border border-pink-100 rounded-xl font-bold text-xs bg-slate-50 text-slate-400 focus:outline-none"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="Validade (MM/AA)" 
-                    disabled
-                    className="w-full px-4 py-2.5 border border-pink-100 rounded-xl font-bold text-xs bg-slate-50 text-slate-400 focus:outline-none"
-                  />
-                  <input 
-                    type="text" 
-                    placeholder="CVV" 
-                    disabled
-                    className="w-full px-4 py-2.5 border border-pink-100 rounded-xl font-bold text-xs bg-slate-50 text-slate-400 focus:outline-none"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-400 font-bold text-center">*(Para testes, utilize o pagamento por Pix Simulador abaixo)*</p>
+            {formError && (
+              <div className="card p-4 bg-wine-100 border-wine-700/20">
+                <p className="text-sm text-wine-700">{formError}</p>
               </div>
             )}
 
-            {/* Test Simulation Confirmation Button */}
-            <button 
-              onClick={handleConfirmPayment}
-              disabled={isProcessing}
-              className="relative inline-flex items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-8 py-4 text-base font-bold text-white transition-all duration-200 cursor-pointer select-none shadow-lg shadow-emerald-500/25 hover:scale-[1.01] hover:shadow-xl hover:shadow-emerald-500/35"
+            <button
+              onClick={handleGeneratePix}
+              disabled={isLoading}
+              className="btn-primary w-full"
             >
-              {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5 animate-bounce" />}
-              {isProcessing ? 'Confirmando Pagamento...' : 'Simular Confirmação de Pagamento (Testar E2E)'}
+              {isLoading ? 'Gerando Pix…' : 'Gerar Pix'}
             </button>
-
-            {/* Secure Footer */}
-            <div className="flex items-center justify-center gap-4 text-[10px] font-bold text-slate-400 border-t border-pink-50 pt-4 mt-2">
-              <span className="flex items-center gap-1">🔒 Gateway Seguro</span>
-              <span className="flex items-center gap-1">🛡️ Garantia de 7 dias</span>
-            </div>
-
           </div>
         )}
 
+        {stage === 'pix' && (
+          <div className="card max-w-md w-full p-8 flex flex-col items-center gap-6">
+            <div className="text-center">
+              <p className="eyebrow mb-2">Pagamento</p>
+              <h1 className="font-display text-3xl text-ink-900">Pague com Pix</h1>
+            </div>
+
+            {qrCodeBase64 ? (
+              <img
+                src={`data:image/png;base64,${qrCodeBase64}`}
+                className="w-56 h-56 mx-auto rounded-xl ring-1 ring-ink-900/10"
+                alt="QR Code Pix"
+              />
+            ) : (
+              <div className="w-56 h-56 mx-auto rounded-xl ring-1 ring-ink-900/10 bg-cream-100 flex items-center justify-center">
+                <span className="text-ink-400 text-sm">Carregando QR…</span>
+              </div>
+            )}
+
+            <p className="text-sm text-ink-600 text-center">
+              Abra o app do seu banco e escaneie, ou use o copia-e-cola:
+            </p>
+
+            {/* Copia-e-cola */}
+            <div className="card p-3 flex items-center gap-3 w-full">
+              <span className="text-xs text-ink-600 truncate flex-1 min-w-0">
+                {qrCode}
+              </span>
+              <button
+                onClick={handleCopy}
+                className="btn-ghost flex-shrink-0 text-sm px-4 py-2 min-h-[44px]"
+              >
+                {copied ? 'Copiado ✓' : 'Copiar'}
+              </button>
+            </div>
+
+            {/* Status pulse */}
+            <p className="text-sm text-ink-400 animate-pulse">
+              Aguardando pagamento…
+            </p>
+          </div>
+        )}
+
+        {stage === 'success' && (
+          <div className="card max-w-md w-full p-8 flex flex-col items-center gap-6 text-center">
+            <div>
+              <h1 className="font-display text-4xl text-ink-900 mb-2">No ar! 🎉</h1>
+              <p className="text-ink-600">A página de vocês está publicada para sempre.</p>
+            </div>
+
+            {/* Public URL card */}
+            <div className="card p-4 flex items-center gap-3 w-full">
+              <span className="text-xs text-ink-600 truncate flex-1 min-w-0 text-left">
+                {publicUrl}
+              </span>
+              <button
+                onClick={handleCopyLink}
+                className="btn-ghost flex-shrink-0 text-sm px-4 py-2 min-h-[44px]"
+              >
+                {copied ? 'Copiado ✓' : 'Copiar'}
+              </button>
+            </div>
+
+            {/* QR Code of the page link */}
+            <div ref={qrRef} className="flex flex-col items-center gap-3">
+              <QRCodeCanvas
+                value={publicUrl}
+                size={200}
+                bgColor="#FAF7F2"
+                fgColor="#1A1714"
+              />
+              <button onClick={handleDownloadQR} className="btn-ghost text-sm min-h-[44px]">
+                Baixar QR Code
+              </button>
+            </div>
+
+            <button
+              onClick={() =>
+                window.open(
+                  'https://wa.me/?text=' +
+                    encodeURIComponent('Fiz uma surpresa pra você 💌 ' + publicUrl)
+                )
+              }
+              className="btn-primary w-full"
+            >
+              Compartilhar no WhatsApp
+            </button>
+
+            <button
+              onClick={() => navigate(`/p/${slug}`)}
+              className="btn-ghost w-full"
+            >
+              Ver nossa página
+            </button>
+          </div>
+        )}
       </main>
 
-      <footer className="text-center py-6 text-xs text-slate-400 border-t border-pink-100 bg-white">
-        © 2026 Chamego · Seguro e Criptografado 🔒
+      <footer className="text-center py-6 text-xs text-ink-400">
+        © 2026 Chamego · Pagamento seguro via Mercado Pago
       </footer>
-
     </div>
   );
 }

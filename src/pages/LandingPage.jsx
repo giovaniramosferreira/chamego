@@ -96,6 +96,7 @@ const scenes = [
 export default function LandingPage() {
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState(null);
+  const lastPage = localStorage.getItem('couple-page-last');
 
   // Typewriter effect states
   const typewriterPhrases = [
@@ -140,6 +141,18 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-cream-50 text-ink-900 font-sans pb-24 md:pb-0">
       <Header />
+
+      {/* ── Returning-user banner ── */}
+      {lastPage && (
+        <div className="max-w-6xl mx-auto mt-24 -mb-16 px-5">
+          <div className="card px-5 py-3 flex items-center justify-between">
+            <span className="text-sm text-ink-600">💌 Sua página está no ar</span>
+            <a href={'/p/' + lastPage} className="text-wine-700 font-semibold text-sm">
+              Abrir →
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* ── 1. Hero ── */}
       <section className="pt-32 pb-20 px-5">
