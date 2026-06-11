@@ -97,6 +97,7 @@ export default function CreatorWizard() {
     cidade: '',
     bairro: '',
     roteiro: null,
+    dataExpiracao: '',
   });
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -453,6 +454,11 @@ export default function CreatorWizard() {
   ];
 
   const handleSubmit = async () => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    if (formData.dataExpiracao && formData.dataExpiracao <= todayIso) {
+      setFormError('A data de autodestruição precisa ser no futuro.');
+      return;
+    }
     setIsSubmitting(true);
     setFormError('');
     let stageIdx = 0;
@@ -1048,6 +1054,28 @@ export default function CreatorWizard() {
                 ))}
               </div>
             </AccordionItem>
+
+            {/* Tempo no ar */}
+            <AccordionItem
+              label="Tempo no ar 💣"
+              isOpen={openAccordion === 'expiracao'}
+              onToggle={() => toggleAccordion('expiracao')}
+            >
+              <div className="flex flex-col gap-3 pt-3">
+                <p className="text-sm text-ink-600">
+                  Quer que a surpresa tenha prazo? Escolha a data em que a página sai do ar. Sem data, fica no ar para sempre.
+                </p>
+                <DateField
+                  label="Autodestruir em"
+                  value={formData.dataExpiracao}
+                  onChange={val => setFormData(p => ({ ...p, dataExpiracao: val }))}
+                  optional
+                />
+                {formData.dataExpiracao && formData.dataExpiracao <= new Date().toISOString().slice(0, 10) && (
+                  <p className="text-sm text-wine-700">Essa data já passou — escolha uma data futura.</p>
+                )}
+              </div>
+            </AccordionItem>
           </div>
         );
 
@@ -1082,6 +1110,7 @@ export default function CreatorWizard() {
               <ReviewRow label="Palavra secreta" value={formData.palavraSecreta || '—'} />
               <ReviewRow label="Conquistas" value={formData.conquistas.length > 0 ? `${formData.conquistas.length}` : '—'} />
               <ReviewRow label="Viagens" value={formData.viagens.length > 0 ? `${formData.viagens.length} viagens` : '—'} />
+              <ReviewRow label="No ar até" value={formData.dataExpiracao ? isoToBr(formData.dataExpiracao) + ' 💣' : 'Para sempre ♾️'} />
             </div>
 
             {isSubmitting && (

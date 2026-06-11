@@ -81,6 +81,10 @@ app.get('/api/pages/:slug', (req, res) => {
   const page = db.getPageBySlug(req.params.slug);
   if (!page) return res.status(404).json({ error: 'Página não encontrada' });
   if (page.status !== 'published') return res.status(403).json({ status: 'draft', error: 'Página aguardando pagamento' });
+  const exp = page.data?.dataExpiracao;
+  if (exp && new Date(`${exp}T23:59:59`) < new Date()) {
+    return res.status(410).json({ expired: true, error: 'Este presente se autodestruiu' });
+  }
   res.json({ ...page.data, status: page.status });
 });
 

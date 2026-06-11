@@ -59,6 +59,7 @@ export default function CouplePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [isDraft, setIsDraft] = useState(false);
+  const [isExpired, setIsExpired] = useState(false);
 
   const [timeDiff, setTimeDiff] = useState({ years: 0, months: 0, days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
@@ -81,6 +82,9 @@ export default function CouplePage() {
   const [isWordCorrect, setIsWordCorrect] = useState(false);
   const [wordError, setWordError] = useState(false);
 
+  // Countdown to expiry
+  const [expiryCountdown, setExpiryCountdown] = useState(null);
+
   // Roulette
   const [isRouletteSpinning, setIsRouletteSpinning] = useState(false);
   const [rouletteIndex, setRouletteIndex] = useState(null);
@@ -100,6 +104,11 @@ export default function CouplePage() {
         const res = await fetch(`/api/pages/${slug}`);
         if (res.status === 403) {
           setIsDraft(true);
+          setIsLoading(false);
+          return;
+        }
+        if (res.status === 410) {
+          setIsExpired(true);
           setIsLoading(false);
           return;
         }
@@ -148,6 +157,30 @@ export default function CouplePage() {
     return () => clearInterval(interval);
   }, [coupleData]);
 
+  /* ── Expiry countdown ────────────────────────────────────── */
+  useEffect(() => {
+    if (!coupleData?.dataExpiracao) return;
+    const target = new Date(`${coupleData.dataExpiracao}T23:59:59`);
+    const calculate = () => {
+      const diff = target - new Date();
+      if (diff <= 0) {
+        setIsExpired(true);
+        return;
+      }
+      const totalSec = Math.floor(diff / 1000);
+      const s = totalSec % 60;
+      const totalMin = Math.floor(totalSec / 60);
+      const m = totalMin % 60;
+      const totalHours = Math.floor(totalMin / 60);
+      const h = totalHours % 24;
+      const d = Math.floor(totalHours / 24);
+      setExpiryCountdown({ d, h, m, s });
+    };
+    calculate();
+    const interval = setInterval(calculate, 1000);
+    return () => clearInterval(interval);
+  }, [coupleData]);
+
   /* ── Photo carousel ──────────────────────────────────────── */
   useEffect(() => {
     if (!coupleData?.fotos || coupleData.fotos.length <= 1) return;
@@ -159,7 +192,7 @@ export default function CouplePage() {
 
   /* ── Hearts rain ─────────────────────────────────────────── */
   useEffect(() => {
-    if (isLoading || loadError || isDraft) return;
+    if (isLoading || loadError || isDraft || isExpired) return;
     const emojis = ['❤️', '🤍'];
     const emitHeart = () => {
       const id = heartIdCounter.current++;
@@ -172,7 +205,7 @@ export default function CouplePage() {
     };
     const interval = setInterval(emitHeart, 1200);
     return () => clearInterval(interval);
-  }, [isLoading, loadError, isDraft]);
+  }, [isLoading, loadError, isDraft, isExpired]);
 
   /* ── Pre-load background music ───────────────────────────── */
   useEffect(() => {
@@ -325,6 +358,21 @@ export default function CouplePage() {
     );
   }
 
+  if (isExpired) {
+    return (
+      <div className="min-h-screen bg-cream-50 flex flex-col items-center justify-center p-6">
+        <div className="card max-w-sm p-8 text-center flex flex-col items-center gap-5">
+          <span className="text-4xl">💥</span>
+          <h2 className="font-display text-2xl font-semibold text-ink-900">Este presente se autodestruiu</h2>
+          <p className="text-sm text-ink-600 leading-relaxed">
+            A página saiu do ar na data escolhida por quem te presenteou.
+          </p>
+          <a href="/" className="btn-ghost">Conhecer o Chamego</a>
+        </div>
+      </div>
+    );
+  }
+
   if (loadError || !coupleData) {
     return (
       <div className="min-h-screen bg-cream-50 flex flex-col items-center justify-center p-6 text-center">
@@ -404,6 +452,21 @@ export default function CouplePage() {
             <ChevronDown className="w-5 h-5" />
           </div>
         </section>
+
+        {/* 1b. Countdown banner (shown only when expiry is set) */}
+        {expiryCountdown && (
+          <ScrollReveal>
+            <div className="bg-slate-950 text-white rounded-[2rem] px-6 py-5 flex items-center justify-center gap-3 text-center">
+              <span className="text-2xl flex-shrink-0">💣</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-slate-400 text-[11px] uppercase tracking-widest font-semibold">Missão com prazo</span>
+                <p className="font-display italic text-lg leading-snug">
+                  Este presente se autodestruirá em {expiryCountdown.d} dias, {expiryCountdown.h}h {expiryCountdown.m}m {expiryCountdown.s}s
+                </p>
+              </div>
+            </div>
+          </ScrollReveal>
+        )}
 
         {/* 2. Counter */}
         <ScrollReveal>
