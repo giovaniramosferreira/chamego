@@ -3,7 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import heroImg from '../assets/hero.png';
+import heroImg from '../assets/hero.jpg';
+import imgLua from '../assets/scenes/lua.jpg';
+import imgConquistas from '../assets/scenes/conquistas.jpg';
+import imgAlbum from '../assets/scenes/album.jpg';
+import imgMapaEstelar from '../assets/scenes/mapa-estelar.jpg';
+import imgReflexo from '../assets/scenes/reflexo.jpg';
+import imgPalavra from '../assets/scenes/palavra-secreta.jpg';
+import imgJornada from '../assets/scenes/jornada.jpg';
+import imgRoleta from '../assets/scenes/roleta.jpg';
 
 // Defined outside component so it's a stable reference (no missing-deps warning)
 const typewriterPhrases = [
@@ -48,56 +56,56 @@ const scenes = [
     title: "Lua do Nosso Encontro",
     icon: "🌙",
     desc: "Mostre a fase da lua exata da data especial de vocês em uma cena noturna, romântica e animada.",
-    media: "https://images.unsplash.com/photo-1532693322450-2cb58f537c95?w=400&q=80"
+    media: imgLua
   },
   {
     id: 2,
     title: "Conquistas do Casal",
     icon: "🏆",
     desc: "Exiba as grandes metas que vocês conquistaram juntos — a primeira viagem, a casa própria, o pet.",
-    media: "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&q=80"
+    media: imgConquistas
   },
   {
     id: 3,
     title: "Álbum em Polaroid",
     icon: "📸",
     desc: "Um carrossel de fotos vintage simulando Polaroids físicas com mensagens escritas à mão.",
-    media: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&q=80"
+    media: imgAlbum
   },
   {
     id: 4,
     title: "Mapa Estelar",
     icon: "✨",
     desc: "O alinhamento das estrelas no céu na noite exata em que vocês se conheceram.",
-    media: "https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?w=400&q=80"
+    media: imgMapaEstelar
   },
   {
     id: 5,
     title: "Reflexo da Alma",
     icon: "🔮",
     desc: "Um espaço de palavras cruzadas ou perguntas doces que revelam o quanto vocês se conhecem.",
-    media: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?w=400&q=80"
+    media: imgReflexo
   },
   {
     id: 6,
     title: "Palavra Secreta",
     icon: "🔐",
     desc: "Esconda uma palavra romântica para seu amor decifrar digitando no celular.",
-    media: "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?w=400&q=80"
+    media: imgPalavra
   },
   {
     id: 7,
     title: "Nossa Jornada no Mapa",
     icon: "📍",
     desc: "Um mapa interativo traçando a linha de distância ou os locais mais marcantes de vocês.",
-    media: "https://images.unsplash.com/photo-1524661135-423995f22d0b?w=400&q=80"
+    media: imgJornada
   },
   {
     id: 8,
     title: "Roleta do Destino",
     icon: "🎡",
     desc: "Uma roleta divertida contendo ideias de encontros e jantares românticos para o casal.",
-    media: "https://images.unsplash.com/photo-1482862549707-f63cb32c5fd9?w=400&q=80"
+    media: imgRoleta
   }
 ];
 
