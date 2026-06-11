@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { X, Heart, Clock, Star, MapPin, Play, Pause, Volume2 } from 'lucide-react';
 
 const SLIDE_DURATION = 6000;
-const TOTAL_SLIDES = 8;
 
 // Carousel cadence per item (ms). Lugares/viagens passam mais rápido.
 const PHOTO_CYCLE = 2200;
@@ -322,6 +321,11 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
   // Inject CSS keyframes on mount
   useEffect(() => { injectKeyframes(); }, []);
 
+  // Índices dinâmicos — slide de Viagens só existe quando há viagens cadastradas
+  const hasViagens = (coupleData?.viagens || []).length > 0;
+  const SLIDE_CUPIDO = hasViagens ? 6 : 5;
+  const TOTAL_SLIDES = hasViagens ? 8 : 7;
+
   /* ── transitionTo helper ────────────────────────────────────────────── */
   const transitionTo = useCallback((nextIndex) => {
     clearInterval(progressRef.current);
@@ -414,27 +418,27 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     return () => clearInterval(timer);
   }, [isOpen, currentSlide, coupleData?.roteiro]);
 
-  /* ── viagem carousel (slide 6, index 5) ────────────────────────────── */
+  /* ── viagem carousel — só ativo quando slide de viagens existe ─────── */
   useEffect(() => {
-    if (!isOpen || currentSlide !== 5) return;
+    if (!isOpen || !hasViagens || currentSlide !== 5) return;
     const viagens = coupleData?.viagens || [];
     if (viagens.length <= 1) return;
     const timer = setInterval(() => {
       setViagemIndex((prev) => (prev + 1) % viagens.length);
     }, VIAGEM_CYCLE);
     return () => clearInterval(timer);
-  }, [isOpen, currentSlide, coupleData?.viagens]);
+  }, [isOpen, currentSlide, hasViagens, coupleData?.viagens]);
 
-  /* ── cupid audio auto-play (slide 7, index 6) ──────────────────────── */
+  /* ── cupid audio auto-play ──────────────────────────────────────────── */
   useEffect(() => {
     if (!isOpen) return;
-    if (currentSlide === 6 && coupleData?.audioUrl && audioRef.current) {
+    if (currentSlide === SLIDE_CUPIDO && coupleData?.audioUrl && audioRef.current) {
       audioRef.current.play().then(() => setAudioPlaying(true)).catch(() => {});
-    } else if (currentSlide !== 6 && audioRef.current && !audioRef.current.paused) {
+    } else if (currentSlide !== SLIDE_CUPIDO && audioRef.current && !audioRef.current.paused) {
       audioRef.current.pause();
       setAudioPlaying(false);
     }
-  }, [isOpen, currentSlide, coupleData?.audioUrl]);
+  }, [isOpen, currentSlide, SLIDE_CUPIDO, coupleData?.audioUrl]);
 
   /* ── reset on open ──────────────────────────────────────────────────── */
   useEffect(() => {
@@ -869,16 +873,17 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
         Veredicto do Cupido
       </h2>
 
-      {data.cupidoComentario && (
-        <p
-          className="mt-6 max-w-xs font-serif text-sm leading-relaxed text-white/90 italic"
-          style={stagger(2)}
-        >
-          &ldquo;{data.cupidoComentario.length > 240
-            ? data.cupidoComentario.slice(0, 240) + '…'
-            : data.cupidoComentario}&rdquo;
-        </p>
-      )}
+      <p
+        className="mt-6 max-w-xs font-serif text-sm leading-relaxed text-white/90 italic"
+        style={stagger(2)}
+      >
+        &ldquo;{data.cupidoComentario
+          ? (data.cupidoComentario.length > 240
+              ? data.cupidoComentario.slice(0, 240) + '…'
+              : data.cupidoComentario)
+          : 'Esse amor foi aprovado pelo Cupido. Que a história de vocês continue linda e cheia de cumplicidade. 💕'
+        }&rdquo;
+      </p>
 
       {/* Audio play button */}
       {data.audioUrl && (
@@ -958,9 +963,9 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     renderPhotos,       // 2
     renderHoroscope,    // 3
     renderDateIdeas,    // 4
-    renderViagens,      // 5
-    renderCupid,        // 6
-    renderShare,        // 7
+    ...(hasViagens ? [renderViagens] : []), // 5 — só quando há viagens
+    renderCupid,        // 5 ou 6
+    renderShare,        // 6 ou 7
   ];
 
   /* ═════════════════════ RENDER ═════════════════════ */
