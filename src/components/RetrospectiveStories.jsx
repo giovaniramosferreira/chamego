@@ -237,8 +237,8 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     if (!isOpen || isPaused) return;
     // Último slide: barra cheia e sem timer rodando à toa
     if (currentSlide === TOTAL_SLIDES - 1) {
-      setProgress(100);
-      return;
+      const t = setTimeout(() => setProgress(100), 0);
+      return () => clearTimeout(t);
     }
     const interval = 50; // tick every 50ms
     const step = (interval / SLIDE_DURATION) * 100;
