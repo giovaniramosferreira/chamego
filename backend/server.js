@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from './db.js';
-import { generateCupido, generateDatePitch } from './ai.js';
+import { generateCupido, generateDatePitch, generatePageContent } from './ai.js';
 import { buildRoteiro, autocomplete, photoStream } from './places.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -70,56 +70,27 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date() });
 });
 
-// Endpoint to fetch page by slug
+// Endpoint to fetch page by slug (published only)
 app.get('/api/pages/:slug', (req, res) => {
-  const { slug } = req.params;
-  const page = db.getPageBySlug(slug);
-  if (!page) {
-    return res.status(404).json({ error: 'Page not found' });
-  }
+  const page = db.getPageBySlug(req.params.slug);
+  if (!page) return res.status(404).json({ error: 'Página não encontrada' });
+  if (page.status !== 'published') return res.status(403).json({ status: 'draft', error: 'Página aguardando pagamento' });
   res.json({ ...page.data, status: page.status });
 });
 
-// Endpoint to draft orders
-app.post('/api/orders', (req, res) => {
-  const { slug, data, email, status } = req.body;
-  if (!slug || !data) {
-    return res.status(400).json({ error: 'Missing slug or data' });
-  }
-
-  // Build the page data payload (stored in SQLite data column)
-  const pageData = {
-    titulo: data.titulo || '',
-    dataInicio: data.dataInicio || '',
-    mensagem: data.mensagem || '',
-    musicaTitulo: data.musicaTitulo || '',
-    musicaUrl: data.musicaUrl || '',
-    fotos: data.fotos || [],
-    emojis: data.emojis || ['❤️'],
-    animacao: data.animacao || 'emoji',
-    template: data.template || 'classic',
-    conquistas: data.conquistas || [],
-    palavraSecreta: data.palavraSecreta || '',
-    palavraSecretaDica: data.palavraSecretaDica || '',
-    opcoesRoleta: data.opcoesRoleta || [],
-    audioUrl: data.audioUrl || '',
-    cupidoComentario: data.cupidoComentario || '',
-    dataNasc1: data.dataNasc1 || '',
-    dataNasc2: data.dataNasc2 || '',
-    signo1: data.signo1 || null,
-    signo2: data.signo2 || null,
-    horoscopoTexto: data.horoscopoTexto || '',
-    cidade: data.cidade || '',
-    bairro: data.bairro || '',
-    sugestaoDates: data.sugestaoDates || ''
-  };
-
+// Endpoint to create a draft with AI-generated content
+app.post('/api/drafts', async (req, res) => {
   try {
-    const saved = db.savePage({ slug, email: email || '', status: status || 'draft', data: pageData });
-    res.json({ success: true, page: saved });
-  // eslint-disable-next-line no-unused-vars
-  } catch (_err) {
-    res.status(500).json({ error: 'Database save failed' });
+    const { data, email } = req.body;
+    if (!data?.titulo || !data?.dataInicio) return res.status(400).json({ error: 'Faltam título ou data de início' });
+    const existing = data.slug ? db.getPageBySlug(data.slug) : null;
+    const slug = existing && existing.status === 'draft' ? data.slug : db.uniqueSlug(data.titulo);
+    const ai = await generatePageContent(data);
+    const page = db.savePage({ slug, email: email || '', status: 'draft', data: { ...data, ...ai, slug } });
+    res.json({ slug, page });
+  } catch (e) {
+    console.error('draft error', e);
+    res.status(500).json({ error: 'Erro ao salvar rascunho' });
   }
 });
 
@@ -254,8 +225,12 @@ if (fs.existsSync(distDir)) {
   app.get(/^\/(?!api|uploads).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')));
 }
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`Uploads folder: ${uploadsDir}`);
-});
+// Start server (skip in test environment)
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+    console.log(`Uploads folder: ${uploadsDir}`);
+  });
+}
+
+export { app };
