@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: chamego
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
+    startCommand: node backend/server.js
+    healthCheckPath: /api/health
+    disk:
+      name: chamego-data
+      mountPath: /var/data
+      sizeGB: 5
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: NODE_VERSION
+        value: '22'
+      - key: MP_ACCESS_TOKEN
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
