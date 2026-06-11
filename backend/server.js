@@ -46,7 +46,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 25 * 1024 * 1024 } // 25MB — fotos de iPhone passam de 10MB
 });
 
 // Configure Multer for local disk storage (Audio)
@@ -309,6 +309,19 @@ if (fs.existsSync(distDir)) {
   app.use(express.static(distDir));
   app.get(/^\/(?!api|uploads).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')));
 }
+
+// Erros de upload (Multer) viram resposta amigável em vez de derrubar a conexão
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    const msg = err.code === 'LIMIT_FILE_SIZE'
+      ? 'Arquivo muito grande — máximo de 25MB por foto ou áudio.'
+      : 'Falha no envio do arquivo. Tente novamente.';
+    return res.status(400).json({ error: msg });
+  }
+  console.error('Erro não tratado:', err);
+  res.status(500).json({ error: 'Erro interno' });
+});
 
 // Start server (skip in test environment)
 if (process.env.NODE_ENV !== 'test') {
