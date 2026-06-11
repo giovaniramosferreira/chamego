@@ -412,11 +412,11 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
 
         <div className="flex items-center gap-3" style={stagger(0, 0)}>
           {data.signo1 && (
-            <span className="text-4xl">{data.signo1}</span>
+            <span className="text-4xl">{data.signo1?.symbol}</span>
           )}
           <Star className="h-6 w-6 text-yellow-300 fill-yellow-300" />
           {data.signo2 && (
-            <span className="text-4xl">{data.signo2}</span>
+            <span className="text-4xl">{data.signo2?.symbol}</span>
           )}
         </div>
 
@@ -516,12 +516,12 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
       )}
 
       {/* Achievements */}
-      {data.conquistas && (
+      {Array.isArray(data.conquistas) && data.conquistas.length > 0 && (
         <div
           className="mt-6 flex items-center gap-1.5 rounded-full bg-white/15 px-4 py-1.5 text-xs text-white/80"
           style={stagger(4)}
         >
-          🏆 <span className="truncate max-w-[200px]">{data.conquistas}</span>
+          🏆 <span>{data.conquistas.length} conquistas juntos</span>
         </div>
       )}
 
