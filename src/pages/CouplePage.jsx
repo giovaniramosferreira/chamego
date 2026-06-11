@@ -758,7 +758,35 @@ export default function CouplePage() {
           </div>
         )}
 
-        {/* 10. Palavra Secreta */}
+        {/* 10. Viagens — Nossa jornada */}
+        {coupleData.viagens?.length > 0 && (
+          <ScrollReveal>
+            <div className="flex flex-col gap-6">
+              <div>
+                <p className="eyebrow mb-2">Nossa jornada</p>
+                <h2 className="font-display text-3xl font-semibold text-ink-900">
+                  Os lugares que já foram nossos
+                </h2>
+              </div>
+              <div className="flex gap-4 overflow-x-auto snap-x pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:overflow-visible">
+                {coupleData.viagens.map((v, idx) => (
+                  <div key={idx} className="card overflow-hidden flex-shrink-0 w-64 snap-center sm:w-auto">
+                    <img
+                      src={v.fotoUrl}
+                      alt={v.lugar}
+                      className="aspect-[4/3] w-full object-cover"
+                    />
+                    <div className="p-4">
+                      <p className="font-display text-lg text-ink-900">📍 {v.lugar}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </ScrollReveal>
+        )}
+
+        {/* 11. Palavra Secreta (ex-10) */}
         {coupleData.palavraSecreta && (
           <ScrollReveal>
             <div className="card p-8">
@@ -797,7 +825,7 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 11. Roleta */}
+        {/* 12. Roleta (ex-11) */}
         {coupleData.opcoesRoleta && coupleData.opcoesRoleta.length > 0 && (
           <ScrollReveal>
             <div id="roleta" className="card p-8">
@@ -849,7 +877,7 @@ export default function CouplePage() {
           </ScrollReveal>
         )}
 
-        {/* 12. Gran Finale — Retrospectiva */}
+        {/* 13. Gran Finale — Retrospectiva (ex-12) */}
         <ScrollReveal>
           <section className="card p-10 text-center flex flex-col items-center gap-5">
             <p className="eyebrow">O gran finale</p>

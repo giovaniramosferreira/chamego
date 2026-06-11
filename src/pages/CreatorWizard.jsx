@@ -88,6 +88,7 @@ export default function CreatorWizard() {
     musicaTitulo: '',
     musicaUrl: '',
     conquistas: [],
+    viagens: [],
     palavraSecreta: '',
     palavraSecretaDica: '',
     opcoesRoleta: [...DEFAULT_ROULETTE],
@@ -384,6 +385,43 @@ export default function CreatorWizard() {
 
   const handleRemoveMilestone = (idx) => {
     setFormData(prev => ({ ...prev, conquistas: prev.conquistas.filter((_, i) => i !== idx) }));
+  };
+
+  /* ─── Step 5 — Viagens ─────────────────────────────────────────────── */
+  const [viagemLugar, setViagemLugar] = useState('');
+  const [viagemFoto, setViagemFoto] = useState('');
+  const [isUploadingViagemFoto, setIsUploadingViagemFoto] = useState(false);
+
+  const handleViagemFotoChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploadingViagemFoto(true);
+    const fd = new FormData();
+    fd.append('photos', file);
+    try {
+      const res = await fetch('/api/uploads/page-photo', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.urls?.[0]) setViagemFoto(data.urls[0]);
+      else setFormError('Erro ao enviar foto da viagem.');
+    } catch {
+      setFormError('Erro de conexão ao enviar foto da viagem.');
+    } finally {
+      setIsUploadingViagemFoto(false);
+    }
+  };
+
+  const handleAddViagem = () => {
+    if (!viagemLugar.trim()) { setFormError('Dê um nome e uma foto para a viagem.'); return; }
+    if (!viagemFoto) { setFormError('Dê um nome e uma foto para a viagem.'); return; }
+    setFormData(prev => ({
+      ...prev,
+      viagens: [...prev.viagens, { lugar: viagemLugar, fotoUrl: viagemFoto }],
+    }));
+    setViagemLugar(''); setViagemFoto('');
+  };
+
+  const handleRemoveViagem = (idx) => {
+    setFormData(prev => ({ ...prev, viagens: prev.viagens.filter((_, i) => i !== idx) }));
   };
 
   /* ─── Step 5 — Roleta ───────────────────────────────────────────────── */
@@ -959,6 +997,57 @@ export default function CreatorWizard() {
                 ))}
               </div>
             </AccordionItem>
+
+            {/* Viagens */}
+            <AccordionItem
+              label="Viagens de vocês"
+              isOpen={openAccordion === 'viagens'}
+              onToggle={() => toggleAccordion('viagens')}
+            >
+              <div className="flex flex-col gap-4 pt-3">
+                <div className="card p-4 flex flex-col gap-3">
+                  <input
+                    className="input-base text-sm"
+                    type="text"
+                    placeholder="Ex: Paris, nossa primeira viagem ✈️"
+                    value={viagemLugar}
+                    onChange={e => setViagemLugar(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleViagemFotoChange}
+                        disabled={isUploadingViagemFoto}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <button disabled className="btn-ghost w-full pointer-events-none text-sm">
+                        {isUploadingViagemFoto ? 'Carregando…' : viagemFoto ? '✓ Foto selecionada' : 'Foto da viagem'}
+                      </button>
+                    </div>
+                    <button onClick={handleAddViagem} className="btn-primary px-5 py-0 min-h-[48px]">
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {formData.viagens.map((item, idx) => (
+                  <div key={idx} className="card flex items-center gap-3 p-3">
+                    <img src={item.fotoUrl} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-ink-900 truncate">{item.lugar}</p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveViagem(idx)}
+                      className="p-2 text-ink-400 hover:text-wine-700 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </AccordionItem>
           </div>
         );
 
@@ -992,6 +1081,7 @@ export default function CreatorWizard() {
               <ReviewRow label="Áudio do casal" value={formData.audioUrl ? '✓' : '—'} />
               <ReviewRow label="Palavra secreta" value={formData.palavraSecreta || '—'} />
               <ReviewRow label="Conquistas" value={formData.conquistas.length > 0 ? `${formData.conquistas.length}` : '—'} />
+              <ReviewRow label="Viagens" value={formData.viagens.length > 0 ? `${formData.viagens.length} viagens` : '—'} />
             </div>
 
             {isSubmitting && (

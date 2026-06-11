@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { X, Heart, Clock, Star, MapPin, Play, Pause, Volume2 } from 'lucide-react';
 
 const SLIDE_DURATION = 6000;
-const TOTAL_SLIDES = 7;
+const TOTAL_SLIDES = 8;
 
 /* ───────────────────── CSS animations (injected once) ───────────────────── */
 const STYLE_ID = '__retro-stories-keyframes';
@@ -220,6 +220,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
   const [isPaused, setIsPaused] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
   const [placeIndex, setPlaceIndex] = useState(0);
+  const [viagemIndex, setViagemIndex] = useState(0);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [slideKey, setSlideKey] = useState(0); // forces re-mount animations
   const [isSharing, setIsSharing] = useState(false);
@@ -290,12 +291,23 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     return () => clearInterval(timer);
   }, [isOpen, currentSlide, coupleData?.roteiro]);
 
-  /* ── cupid audio auto-play (slide 6, index 5) ──────────────────────── */
+  /* ── viagem carousel (slide 6, index 5) ────────────────────────────── */
+  useEffect(() => {
+    if (!isOpen || currentSlide !== 5) return;
+    const viagens = coupleData?.viagens || [];
+    if (viagens.length <= 1) return;
+    const timer = setInterval(() => {
+      setViagemIndex((prev) => (prev + 1) % viagens.length);
+    }, 2200);
+    return () => clearInterval(timer);
+  }, [isOpen, currentSlide, coupleData?.viagens]);
+
+  /* ── cupid audio auto-play (slide 7, index 6) ──────────────────────── */
   useEffect(() => {
     if (!isOpen) return;
-    if (currentSlide === 5 && coupleData?.audioUrl && audioRef.current) {
+    if (currentSlide === 6 && coupleData?.audioUrl && audioRef.current) {
       audioRef.current.play().then(() => setAudioPlaying(true)).catch(() => {});
-    } else if (currentSlide !== 5 && audioRef.current && !audioRef.current.paused) {
+    } else if (currentSlide !== 6 && audioRef.current && !audioRef.current.paused) {
       audioRef.current.pause();
       setAudioPlaying(false);
     }
@@ -310,6 +322,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
       setIsPaused(false);
       setPhotoIndex(0);
       setPlaceIndex(0);
+      setViagemIndex(0);
       setAudioPlaying(false);
       setSlideKey(0);
       setIsSharing(false);
@@ -659,6 +672,54 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     );
   };
 
+  const renderViagens = () => {
+    const viagens = data.viagens || [];
+    const currentViagem = viagens[viagemIndex];
+
+    return (
+      <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-sky-900 via-indigo-950 to-slate-950 px-8 text-center">
+        {/* Ambient glow */}
+        <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 h-60 w-60 rounded-full bg-sky-500/15 blur-3xl" />
+
+        <h2 className="font-display text-2xl font-bold text-white sm:text-3xl" style={stagger(0, 0)}>
+          Os cantos do mundo que são de vocês 🌍
+        </h2>
+
+        {viagens.length > 0 && currentViagem ? (
+          <div
+            key={viagemIndex}
+            className="relative mt-8"
+            style={{
+              '--rot': `-3deg`,
+              animation: 'polaroidIn 0.5s ease-out both',
+            }}
+          >
+            {/* Polaroid frame */}
+            <div className="rounded-lg bg-white p-2 pb-8 shadow-xl shadow-sky-900/40">
+              <img
+                src={photoSrc(currentViagem.fotoUrl)}
+                alt={currentViagem.lugar}
+                className="h-56 w-56 rounded object-cover sm:h-64 sm:w-64"
+                draggable={false}
+              />
+              <div className="px-2 pt-2">
+                <p className="font-bold text-slate-900 text-sm leading-tight">📍 {currentViagem.lugar}</p>
+              </div>
+            </div>
+            {/* Counter */}
+            <p className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs text-white/80 font-medium drop-shadow">
+              {viagemIndex + 1} / {viagens.length}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-8 text-white/70 text-sm" style={stagger(1)}>
+            Cada viagem de vocês vira um capítulo aqui ✈️
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const renderCupid = () => (
     <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-pink-500 via-rose-500 to-pink-600 px-8 text-center">
       {/* Glow */}
@@ -754,13 +815,14 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
   );
 
   const slideRenderers = [
-    renderCover,
-    renderTimeTogether,
-    renderPhotos,
-    renderHoroscope,
-    renderDateIdeas,
-    renderCupid,
-    renderShare,
+    renderCover,        // 0
+    renderTimeTogether, // 1
+    renderPhotos,       // 2
+    renderHoroscope,    // 3
+    renderDateIdeas,    // 4
+    renderViagens,      // 5
+    renderCupid,        // 6
+    renderShare,        // 7
   ];
 
   /* ═════════════════════ RENDER ═════════════════════ */
