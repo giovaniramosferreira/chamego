@@ -95,9 +95,9 @@ const scenes = [
   },
   {
     id: 7,
-    title: "Nossa Jornada no Mapa",
+    title: "Viagens de Vocês",
     icon: "📍",
-    desc: "Um mapa interativo traçando a linha de distância ou os locais mais marcantes de vocês.",
+    desc: "Cada viagem do casal vira um capítulo — foto a foto, lugar a lugar.",
     media: imgJornada
   },
   {
