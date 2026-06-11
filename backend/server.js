@@ -255,7 +255,7 @@ app.post('/api/webhooks/mercadopago', async (req, res) => {
     if ((req.body?.type === 'payment' || req.query.type === 'payment') && id) {
       const p = await getPayment(id);
       if (p.external_reference) {
-        db.savePayment({ id: p.id, slug: p.external_reference, status: p.status, amount: PRICE });
+        db.savePayment({ id: p.id, slug: p.external_reference, status: p.status, amount: p.transaction_amount ?? PRICE });
         if (p.status === 'approved') db.publishPage(p.external_reference);
       }
     }
