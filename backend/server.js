@@ -263,6 +263,23 @@ app.post('/api/webhooks/mercadopago', async (req, res) => {
   } catch (e) { console.error('webhook', e); res.sendStatus(200); }
 });
 
+// Cupom promocional — publica sem pagamento. Ativo apenas enquanto a env
+// COUPON_CODE existir; para desativar, basta remover a variável no Render.
+app.post('/api/coupons/redeem', (req, res) => {
+  const { slug, code } = req.body;
+  const valid = process.env.COUPON_CODE
+    && typeof code === 'string'
+    && code.trim().toLowerCase() === process.env.COUPON_CODE.toLowerCase();
+  if (!valid) return res.status(400).json({ error: 'Cupom inválido' });
+  const page = db.getPageBySlug(slug);
+  if (!page) return res.status(404).json({ error: 'Rascunho não encontrado' });
+  if (page.status !== 'published') {
+    db.savePayment({ id: `coupon-${slug}`, slug, status: 'approved', amount: 0 });
+    db.publishPage(slug);
+  }
+  res.json({ published: true, slug });
+});
+
 // Em produção o Express serve o build do Vite (SPA) — mesmo origin do /api
 const distDir = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {

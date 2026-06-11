@@ -20,6 +20,11 @@ export default function CheckoutPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
+  // coupon state
+  const [showCoupon, setShowCoupon] = useState(false);
+  const [coupon, setCoupon] = useState('');
+  const [isRedeeming, setIsRedeeming] = useState(false);
+
   // pix state
   const [qrCode, setQrCode] = useState('');
   const [qrCodeBase64, setQrCodeBase64] = useState('');
@@ -48,6 +53,31 @@ export default function CheckoutPage() {
   }
 
   // ── Handlers
+  async function handleRedeemCoupon() {
+    if (!coupon.trim()) return;
+    setIsRedeeming(true);
+    setFormError('');
+    try {
+      const res = await fetch('/api/coupons/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, code: coupon }),
+      });
+      const data = await res.json();
+      if (res.ok && data.published) {
+        localStorage.setItem('couple-page-last', slug);
+        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+        setStage('success');
+      } else {
+        setFormError(data.error || 'Cupom inválido');
+      }
+    } catch {
+      setFormError('Erro de conexão ao validar o cupom.');
+    } finally {
+      setIsRedeeming(false);
+    }
+  }
+
   async function handleGeneratePix() {
     setIsLoading(true);
     setFormError('');
@@ -204,6 +234,34 @@ export default function CheckoutPage() {
             >
               {isLoading ? 'Gerando Pix…' : 'Gerar Pix'}
             </button>
+
+            {/* Cupom */}
+            {!showCoupon ? (
+              <button
+                onClick={() => setShowCoupon(true)}
+                className="text-sm text-ink-400 underline underline-offset-4 cursor-pointer min-h-[44px] self-center"
+              >
+                Tem um cupom?
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input-base flex-1"
+                  placeholder="Seu cupom"
+                  value={coupon}
+                  onChange={(e) => setCoupon(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleRedeemCoupon()}
+                />
+                <button
+                  onClick={handleRedeemCoupon}
+                  disabled={isRedeeming || !coupon.trim()}
+                  className="btn-ghost flex-shrink-0"
+                >
+                  {isRedeeming ? 'Validando…' : 'Aplicar'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
