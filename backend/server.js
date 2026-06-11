@@ -5,7 +5,8 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { db } from './db.js';
-import { generateCupido } from './ai.js';
+import { generateCupido, generateDatePitch } from './ai.js';
+import { buildRoteiro, autocomplete, photoStream } from './places.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,21 +21,6 @@ app.use(cors({
 
 app.use(express.json());
 
-
-function getSimulatedDateSuggestions(nome1, nome2, cidade, bairro) {
-  const intro = `Cupido selecionou um roteiro perfeito para vocês aproveitarem o melhor de ${cidade} (${bairro}) de forma super romântica e aconchegante! ✨`;
-  
-  const cafe = `☕ Café da Manhã Romântico:
-Comecem o dia com leveza na região de ${bairro}. Procurem aquela cafeteria charmosa com mesinhas ao ar livre e um clima acolhedor. O plano ideal é dividir um croissant fresquinho, pedir dois cafés especiais e curtir a manhã jogando conversa fora, planejando os sonhos de vocês enquanto curtem a brisa.`;
-
-  const almoco = `🍝 Almoço Gostoso:
-Para o almoço, busquem um bistrô intimista ou restaurante caseiro charmoso em ${cidade}. Saboreiem uma massa fresca ou um prato especial de forma tranquila, aproveitando o momento para se desconectar do mundo e focar somente na companhia e risadas um do outro.`;
-
-  const jantar = `🕯️ Jantar Romântico:
-O ápice do date em ${bairro} deve ser um restaurante aconchegante com iluminação suave (à luz de velas se possível) e música ambiente agradável. Peçam um bom prato, brindem ao amor de ${nome1} e ${nome2} e desfrutem de conversas profundas que fazem o tempo parar.`;
-
-  return `${intro}\n\n${cafe}\n\n${almoco}\n\n${jantar}`;
-}
 
 // Ensure uploads folder exists
 const uploadsDir = path.join(process.env.DATA_DIR || __dirname, 'uploads');
@@ -138,89 +124,38 @@ app.post('/api/orders', (req, res) => {
 });
 
 
-// Endpoint to generate romantic date suggestions by region (City & Neighborhood) using Claude or local simulator
-app.post('/api/dates/suggest', async (req, res) => {
+// Google Places — autocomplete
+app.get('/api/places/autocomplete', async (req, res) => {
+  res.json({ suggestions: await autocomplete(String(req.query.q || '')) });
+});
+
+// Google Places — roteiro dia/noite com frases românticas
+app.post('/api/places/roteiro', async (req, res) => {
   try {
-    const { titulo, cidade, bairro } = req.body;
-    if (!cidade || !bairro) {
-      return res.status(400).json({ error: 'Missing city or neighborhood' });
+    const { cidade, bairro } = req.body;
+    if (!cidade || !bairro) return res.status(400).json({ error: 'Informe cidade e bairro' });
+    const roteiro = await buildRoteiro({ cidade, bairro });
+    for (const sec of ['dia', 'noite']) {
+      await Promise.all(roteiro[sec].map(async c => { c.frase = await generateDatePitch(c); }));
     }
-    
-    let nome1 = 'Parceiro 1';
-    let nome2 = 'Parceiro 2';
-    if (titulo) {
-      const parts = titulo.split(/\s+(?:&|e)\s+/i);
-      if (parts.length >= 2) {
-        nome1 = parts[0].trim();
-        nome2 = parts[1].trim();
-      } else {
-        nome1 = titulo;
-      }
-    }
-    
-    let sugestaoDates = '';
-    
-    // Call Anthropic Claude API if key is present
-    if (process.env.ANTHROPIC_API_KEY) {
-      console.log('ANTHROPIC_API_KEY found, requesting regional date ideas from Claude...');
-      try {
-        const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'x-api-key': process.env.ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 1024,
-            messages: [
-              {
-                role: 'user',
-                content: `Você é um cupido e consultor de encontros românticos especialista na região indicada. Sugira um roteiro de date romântico incrível e aconchegante para o casal "${nome1}" e "${nome2}" em:
-Cidade: "${cidade}"
-Bairro/Região: "${bairro}"
-
-O roteiro DEVE conter sugestões reais (ou extremamente realistas, charmosas e locais) de lugares ou atividades para:
-1. Bom café da manhã (Café da Manhã)
-2. Almoço gostoso (Almoço)
-3. Jantar romântico (Jantar)
-
-Instruções de Estilo:
-- Responda em português do Brasil.
-- Adote um tom romântico, caloroso, lúdico e sofisticado (um texto bem gostosinho de ler).
-- Descreva a atmosfera/clima sugerido de cada lugar de maneira poética e envolvente.
-- Formate de maneira clara usando subtítulos ou marcadores simples para cada uma das 3 sugestões (Café da Manhã, Almoço, Jantar).
-- Use emojis apropriados (☕, 🥐, 🍝, 🍷, 🕯️, ❤️).
-- Escreva de 3 a 4 parágrafos curtos no total.`
-              }
-            ]
-          })
-        });
-        
-        if (claudeRes.ok) {
-          const claudeData = await claudeRes.json();
-          sugestaoDates = claudeData.content[0].text || '';
-          console.log(`Claude Date Suggestions Result: "${sugestaoDates.substring(0, 50)}..."`);
-        } else {
-          const errText = await claudeRes.text();
-          console.error('Claude API date suggestion error:', errText);
-        }
-      } catch (err) {
-        console.error('Claude API call for dates failed:', err);
-      }
-    }
-    
-    if (!sugestaoDates) {
-      console.log('Using simulated date suggestions fallback...');
-      sugestaoDates = getSimulatedDateSuggestions(nome1, nome2, cidade, bairro);
-    }
-    
-    res.json({ sugestaoDates });
-  } catch (error) {
-    console.error('Date suggestions endpoint error:', error);
-    res.status(500).json({ error: 'Failed to generate date suggestions' });
+    res.json(roteiro);
+  } catch (e) {
+    console.error('roteiro error', e);
+    res.status(502).json({ error: 'Falha ao buscar lugares' });
   }
+});
+
+// Google Places — proxy de fotos (evita expor API key no browser)
+app.get('/api/places/photo', async (req, res) => {
+  try {
+    const name = String(req.query.name || '');
+    if (!/^places\/[^/]+\/photos\/[^/]+$/.test(name)) return res.status(400).end();
+    const upstream = await photoStream(name);
+    if (!upstream.ok) return res.status(404).end();
+    res.set('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(Buffer.from(await upstream.arrayBuffer()));
+  } catch { res.status(502).end(); }
 });
 
 // Endpoint to upload multiple files and return their URLs
