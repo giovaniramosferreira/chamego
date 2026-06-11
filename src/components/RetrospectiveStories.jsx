@@ -4,6 +4,13 @@ import { X, Heart, Clock, Star, MapPin, Play, Pause, Volume2 } from 'lucide-reac
 const SLIDE_DURATION = 6000;
 const TOTAL_SLIDES = 8;
 
+// Carousel cadence per item (ms). Lugares/viagens passam mais rápido.
+const PHOTO_CYCLE = 2200;
+const PLACE_CYCLE = 1600;
+const VIAGEM_CYCLE = 1600;
+// Buffer extra pra última imagem do carrossel respirar antes de avançar.
+const CAROUSEL_TAIL = 700;
+
 /* ───────────────────── CSS animations (injected once) ───────────────────── */
 const STYLE_ID = '__retro-stories-keyframes';
 function injectKeyframes() {
@@ -139,22 +146,51 @@ function loadImage(src) {
   });
 }
 
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  const words = text.split(' ');
+// Quebra o texto em linhas que cabem em maxWidth (sem desenhar). Limita a maxLines.
+// Se passar do limite, trunca a última linha com "…".
+function wrapLines(ctx, text, maxWidth, maxLines = 3) {
+  const words = (text || '').trim().split(/\s+/).filter(Boolean);
+  const lines = [];
   let line = '';
-  let currentY = y;
-  for (let n = 0; n < words.length; n++) {
-    const testLine = line + words[n] + ' ';
-    const metrics = ctx.measureText(testLine);
-    if (metrics.width > maxWidth && n > 0) {
-      ctx.fillText(line, x, currentY);
-      line = words[n] + ' ';
-      currentY += lineHeight;
+  for (let i = 0; i < words.length; i++) {
+    const test = line ? line + ' ' + words[i] : words[i];
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = words[i];
+      if (lines.length === maxLines - 1) {
+        // última linha permitida: junta o que sobra e trunca se precisar
+        line = words.slice(i).join(' ');
+        break;
+      }
     } else {
-      line = testLine;
+      line = test;
     }
   }
-  ctx.fillText(line, x, currentY);
+  if (line) {
+    if (ctx.measureText(line).width > maxWidth) {
+      while (line.length > 1 && ctx.measureText(line + '…').width > maxWidth) {
+        line = line.slice(0, -1);
+      }
+      line = line.replace(/\s+$/, '') + '…';
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+function heart(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(size / 16, size / 16);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, 4);
+  ctx.bezierCurveTo(0, 1, -4, -3, -8, 0);
+  ctx.bezierCurveTo(-13, 4, -7, 11, 0, 15);
+  ctx.bezierCurveTo(7, 11, 13, 4, 8, 0);
+  ctx.bezierCurveTo(4, -3, 0, 1, 0, 4);
+  ctx.fill();
+  ctx.restore();
 }
 
 async function buildStoryImage(data, td) {
@@ -163,19 +199,36 @@ async function buildStoryImage(data, td) {
   canvas.width = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
-  // fundo creme
-  ctx.fillStyle = '#FAF7F2';
+
+  // fundo: gradiente romântico quente
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#FFF1F4');
+  bg.addColorStop(0.5, '#FCE3E8');
+  bg.addColorStop(1, '#F7CDD8');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
-  // moldura fina
-  ctx.strokeStyle = 'rgba(26,23,20,0.15)';
+
+  // coraçõezinhos flutuantes de fundo (decoração suave)
+  const decals = [
+    [140, 320, 46], [950, 380, 36], [120, 980, 30], [980, 1100, 50],
+    [200, 1500, 38], [900, 1560, 30], [540, 200, 28],
+  ];
+  for (const [x, y, s] of decals) heart(ctx, x, y, s, 'rgba(179,40,79,0.08)');
+
+  // moldura fina romântica
+  ctx.strokeStyle = 'rgba(179,40,79,0.25)';
   ctx.lineWidth = 4;
   ctx.strokeRect(60, 60, W - 120, H - 120);
+
+  ctx.textAlign = 'center';
+
   // foto do casal (primeira), se houver — círculo grande no topo
   const fotoUrl = (data.fotos || [])[0];
+  const cy = 560, R = 300;
   if (fotoUrl) {
     try {
       const img = await loadImage(fotoUrl);
-      const R = 280, cx = W / 2, cy = 560;
+      const cx = W / 2;
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, Math.PI * 2);
@@ -183,36 +236,65 @@ async function buildStoryImage(data, td) {
       const s = Math.max((R * 2) / img.width, (R * 2) / img.height);
       ctx.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
       ctx.restore();
+      // aro duplo
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, Math.PI * 2);
-      ctx.strokeStyle = '#B3284F';
-      ctx.lineWidth = 8;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 14;
       ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, R + 9, 0, Math.PI * 2);
+      ctx.strokeStyle = '#B3284F';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      // coração no topo do aro
+      heart(ctx, cx, cy - R - 18, 70, '#B3284F');
     } catch {
       /* sem foto, segue */
     }
+  } else {
+    heart(ctx, W / 2, cy, 220, '#B3284F');
   }
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#1A1714';
-  ctx.font = 'italic 700 96px Georgia, serif';
-  wrapText(ctx, data.titulo || 'Nosso amor', W / 2, 1050, 900, 104);
+
+  // título do casal (medido — nunca estoura, no máx 2 linhas)
+  ctx.fillStyle = '#7A1834';
+  ctx.font = 'italic 700 92px Georgia, serif';
+  const maxTextW = W - 220;
+  const titleLines = wrapLines(ctx, data.titulo || 'Nosso amor', maxTextW, 2);
+  let ty = 1060;
+  for (const ln of titleLines) {
+    ctx.fillText(ln, W / 2, ty);
+    ty += 104;
+  }
+
+  // tempo juntos
   ctx.fillStyle = '#B3284F';
-  ctx.font = 'italic 44px Georgia, serif';
+  ctx.font = 'italic 46px Georgia, serif';
   const dias =
     td?.years > 0
-      ? `${td.years} ${td.years === 1 ? 'ano' : 'anos'} de história`
-      : `${td?.days ?? ''} dias de história`;
-  ctx.fillText(dias, W / 2, 1190);
+      ? `${td.years} ${td.years === 1 ? 'ano' : 'anos'} de amor`
+      : `${td?.days ?? ''} dias de amor`;
+  ctx.fillText(dias, W / 2, ty + 24);
+
+  // frase fofa (medida pra não estourar)
   ctx.fillStyle = '#5C554C';
-  ctx.font = '36px Georgia, serif';
-  ctx.fillText('ganhei uma página do nosso amor 💌', W / 2, 1330);
-  // divulga só a marca — o link do casal é íntimo, não vai no post
+  ctx.font = '38px Georgia, serif';
+  const frase = wrapLines(ctx, 'Ganhei a página mais linda do nosso amor 💌', maxTextW, 2);
+  let fy = ty + 150;
+  for (const ln of frase) {
+    ctx.fillText(ln, W / 2, fy);
+    fy += 50;
+  }
+
+  // marca (link do casal é íntimo, não vai no post)
+  heart(ctx, W / 2, 1560, 40, '#B3284F');
   ctx.fillStyle = '#B3284F';
-  ctx.font = 'italic 700 80px Georgia, serif';
-  ctx.fillText('chamego', W / 2, 1620);
+  ctx.font = 'italic 700 82px Georgia, serif';
+  ctx.fillText('chamego', W / 2, 1680);
   ctx.fillStyle = '#948C80';
   ctx.font = 'italic 34px Georgia, serif';
-  ctx.fillText('páginas de amor que emocionam', W / 2, 1690);
+  ctx.fillText('páginas de amor que emocionam', W / 2, 1745);
+
   return new Promise((res) => canvas.toBlob(res, 'image/png'));
 }
 
@@ -259,6 +341,26 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     transitionToRef.current = transitionTo;
   }, [transitionTo]);
 
+  /* ── duração dinâmica: slide dura o suficiente p/ passar todos os itens ── */
+  const getSlideDuration = useCallback((slide) => {
+    if (slide === 2) {
+      const n = (coupleData?.fotos || []).length;
+      return n > 1 ? n * PHOTO_CYCLE + CAROUSEL_TAIL : SLIDE_DURATION;
+    }
+    if (slide === 4) {
+      const n = [
+        ...(coupleData?.roteiro?.dia || []),
+        ...(coupleData?.roteiro?.noite || []),
+      ].filter((p) => p.fotoUrl).length;
+      return n > 1 ? n * PLACE_CYCLE + CAROUSEL_TAIL : SLIDE_DURATION;
+    }
+    if (slide === 5) {
+      const n = (coupleData?.viagens || []).length;
+      return n > 1 ? n * VIAGEM_CYCLE + CAROUSEL_TAIL : SLIDE_DURATION;
+    }
+    return SLIDE_DURATION;
+  }, [coupleData]);
+
   /* ── auto-advance progress ──────────────────────────────────────────── */
   useEffect(() => {
     if (!isOpen || isPaused) return;
@@ -268,7 +370,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
       return () => clearTimeout(t);
     }
     const interval = 50; // tick every 50ms
-    const step = (interval / SLIDE_DURATION) * 100;
+    const step = (interval / getSlideDuration(currentSlide)) * 100;
 
     progressRef.current = setInterval(() => {
       setProgress((prev) => {
@@ -285,7 +387,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     }, interval);
 
     return () => clearInterval(progressRef.current);
-  }, [isOpen, isPaused, currentSlide]);
+  }, [isOpen, isPaused, currentSlide, getSlideDuration]);
 
   /* ── photo auto-cycle (slide 3) ─────────────────────────────────────── */
   useEffect(() => {
@@ -294,7 +396,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     if (photos.length <= 1) return;
     const timer = setInterval(() => {
       setPhotoIndex((prev) => (prev + 1) % photos.length);
-    }, 2200);
+    }, PHOTO_CYCLE);
     return () => clearInterval(timer);
   }, [isOpen, currentSlide, coupleData?.fotos]);
 
@@ -308,7 +410,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     if (places.length <= 1) return;
     const timer = setInterval(() => {
       setPlaceIndex((prev) => (prev + 1) % places.length);
-    }, 2200);
+    }, PLACE_CYCLE);
     return () => clearInterval(timer);
   }, [isOpen, currentSlide, coupleData?.roteiro]);
 
@@ -319,7 +421,7 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
     if (viagens.length <= 1) return;
     const timer = setInterval(() => {
       setViagemIndex((prev) => (prev + 1) % viagens.length);
-    }, 2200);
+    }, VIAGEM_CYCLE);
     return () => clearInterval(timer);
   }, [isOpen, currentSlide, coupleData?.viagens]);
 
@@ -514,23 +616,29 @@ export default function RetrospectiveStories({ isOpen, onClose, coupleData, time
         Juntos há…
       </h2>
 
-      {/* Big numbers */}
-      <div className="mt-8 flex flex-wrap items-center justify-center gap-4" style={stagger(2)}>
+      {/* Big numbers — cada unidade num "card" próprio + divisor, pra não virar 466 */}
+      <div className="mt-8 flex flex-wrap items-stretch justify-center gap-3 sm:gap-4" style={stagger(2)}>
         {td.years > 0 && (
-          <div className="flex flex-col items-center">
-            <span className="font-display text-5xl font-black text-pink-400 sm:text-6xl">{td.years}</span>
-            <span className="mt-1 text-xs text-pink-200/70">{td.years === 1 ? 'ano' : 'anos'}</span>
-          </div>
+          <>
+            <div className="flex min-w-[68px] flex-col items-center rounded-2xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
+              <span className="font-display text-5xl font-black tabular-nums text-pink-400 sm:text-6xl">{td.years}</span>
+              <span className="mt-1 text-xs uppercase tracking-wide text-pink-200/70">{td.years === 1 ? 'ano' : 'anos'}</span>
+            </div>
+            <span className="self-center text-2xl font-light text-pink-200/30">·</span>
+          </>
         )}
         {(td.months > 0 || td.years > 0) && (
-          <div className="flex flex-col items-center">
-            <span className="font-display text-5xl font-black text-pink-300 sm:text-6xl">{td.months ?? 0}</span>
-            <span className="mt-1 text-xs text-pink-200/70">{td.months === 1 ? 'mês' : 'meses'}</span>
-          </div>
+          <>
+            <div className="flex min-w-[68px] flex-col items-center rounded-2xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
+              <span className="font-display text-5xl font-black tabular-nums text-pink-300 sm:text-6xl">{td.months ?? 0}</span>
+              <span className="mt-1 text-xs uppercase tracking-wide text-pink-200/70">{td.months === 1 ? 'mês' : 'meses'}</span>
+            </div>
+            <span className="self-center text-2xl font-light text-pink-200/30">·</span>
+          </>
         )}
-        <div className="flex flex-col items-center">
-          <span className="font-display text-5xl font-black text-rose-400 sm:text-6xl">{td.days ?? 0}</span>
-          <span className="mt-1 text-xs text-pink-200/70">dias</span>
+        <div className="flex min-w-[68px] flex-col items-center rounded-2xl bg-white/5 px-4 py-3 ring-1 ring-white/10">
+          <span className="font-display text-5xl font-black tabular-nums text-rose-400 sm:text-6xl">{td.days ?? 0}</span>
+          <span className="mt-1 text-xs uppercase tracking-wide text-pink-200/70">dias</span>
         </div>
       </div>
 
