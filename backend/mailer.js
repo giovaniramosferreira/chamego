@@ -1,13 +1,34 @@
 import nodemailer from 'nodemailer';
 
-// Envio via Gmail SMTP (GMAIL_USER + GMAIL_APP_PASSWORD). Sem credenciais o
-// link é logado no console — modo dev/teste, nada quebra.
+// Envio por SMTP. Prioridade: SMTP genérico (Resend, domínio próprio, etc.)
+// via SMTP_HOST/PORT/USER/PASS; senão cai no Gmail legado
+// (GMAIL_USER + GMAIL_APP_PASSWORD). Sem nenhuma credencial o link é logado
+// no console — modo dev/teste, nada quebra.
 function transporter() {
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) return null;
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
-  });
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    const port = Number(process.env.SMTP_PORT) || 465;
+    return nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: port === 465, // 465 = TLS implícito; 587 = STARTTLS
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+  }
+  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+    });
+  }
+  return null;
+}
+
+// Remetente exibido. MAIL_FROM vence; senão usa o Gmail legado; senão um
+// padrão no domínio próprio.
+function fromAddress() {
+  if (process.env.MAIL_FROM) return process.env.MAIL_FROM;
+  if (process.env.GMAIL_USER) return `"Chamego" <${process.env.GMAIL_USER}>`;
+  return '"Chamego" <ola@chamego.online>';
 }
 
 function magicLinkHtml(link) {
@@ -35,11 +56,11 @@ function magicLinkHtml(link) {
 export async function sendMagicLink(email, link) {
   const t = transporter();
   if (!t) {
-    console.log(`[mailer] GMAIL_USER/GMAIL_APP_PASSWORD ausentes — link mágico para ${email}: ${link}`);
+    console.log(`[mailer] SMTP não configurado — link mágico para ${email}: ${link}`);
     return;
   }
   await t.sendMail({
-    from: `"Chamego" <${process.env.GMAIL_USER}>`,
+    from: fromAddress(),
     to: email,
     subject: 'Seu link de acesso ao Chamego 💌',
     text: `Entre no Chamego pelo link (vale 15 minutos, uso único): ${link}`,
