@@ -38,7 +38,7 @@ function magicLinkHtml(link) {
       <p style="font-style:italic;font-size:26px;color:#7B2D43;margin:0 0 8px;">Chamego</p>
       <h1 style="font-size:22px;color:#1A1714;font-weight:normal;margin:0 0 16px;">Seu link de acesso 💌</h1>
       <p style="font-size:15px;color:#5C554D;line-height:1.6;margin:0 0 28px;">
-        Clique no botão abaixo para entrar e gerenciar a página de vocês.
+        Clique no botão abaixo para entrar no espaço de vocês.
         O link vale por 15 minutos e só funciona uma vez.
       </p>
       <a href="${link}"
