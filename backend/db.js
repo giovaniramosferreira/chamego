@@ -1,154 +1,149 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
-export function slugify(titulo) {
-  return titulo.toLowerCase()
-    .replace(/\s*&\s*/g, '-e-')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-')
-    .replace(/-+/g, '-').replace(/^-|-$/g, '') || 'nosso-amor';
+// Sem 0/O/1/I/L: código será digitado/dito em voz alta pelo casal.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export function generateInviteCode() {
+  let code = '';
+  const bytes = crypto.randomBytes(6);
+  for (let i = 0; i < 6; i++) code += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+  return code;
 }
+
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS users (
+    email TEXT PRIMARY KEY,
+    name TEXT DEFAULT '',
+    picture TEXT DEFAULT '',
+    onboarding TEXT DEFAULT '{}',
+    terms_accepted_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS couples (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    photo_url TEXT DEFAULT '',
+    milestone_date TEXT NOT NULL,
+    milestone_label TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS couple_members (
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL UNIQUE REFERENCES users(email),
+    role TEXT NOT NULL CHECK (role IN ('creator','partner')),
+    joined_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS invites (
+    code TEXT PRIMARY KEY,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','revoked')),
+    accepted_by TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS login_tokens (
+    token TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+  )`,
+];
 
 export function createDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const sqlite = new Database(file);
   sqlite.pragma('journal_mode = WAL');
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS pages (
-      slug TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'draft',
-      email TEXT DEFAULT '',
-      claim_token TEXT DEFAULT '',
-      owner_email TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS payments (
-      id TEXT PRIMARY KEY,
-      slug TEXT NOT NULL,
-      status TEXT NOT NULL,
-      amount REAL NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS users (
-      email TEXT PRIMARY KEY,
-      name TEXT DEFAULT '',
-      phone TEXT DEFAULT '',
-      picture TEXT DEFAULT '',
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS login_tokens (
-      token TEXT PRIMARY KEY,
-      email TEXT NOT NULL,
-      claims TEXT DEFAULT '[]',
-      expires_at TEXT NOT NULL,
-      used_at TEXT
-    );
-  `);
-  // Migração de bancos antigos sem as colunas de Reivindicação
-  for (const col of ['claim_token', 'owner_email']) {
-    try { sqlite.exec(`ALTER TABLE pages ADD COLUMN ${col} TEXT DEFAULT ''`); } catch { /* coluna já existe */ }
-  }
+  for (const ddl of SCHEMA) sqlite.prepare(ddl).run();
+
   return {
-    savePage({ slug, data, status = 'draft', email = '', claimToken = '' }) {
-      // No upsert o status não é sobrescrito: re-salvar dados de uma página já
-      // publicada não pode despublicá-la (publicação só via publishPage).
-      // claim_token e owner_sub também não: só nascem no INSERT / via claimPage.
-      sqlite.prepare(`INSERT INTO pages (slug, data, status, email, claim_token) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(slug) DO UPDATE SET data=excluded.data, email=excluded.email, updated_at=datetime('now')`)
-        .run(slug, JSON.stringify(data), status, email, claimToken);
-      return this.getPageBySlug(slug);
-    },
-    getPageBySlug(slug) {
-      const row = sqlite.prepare('SELECT * FROM pages WHERE slug = ?').get(slug);
-      if (!row) return null;
-      try {
-        return { ...row, data: JSON.parse(row.data) };
-      } catch (e) {
-        console.error(`Página ${slug} com data corrompido:`, e.message);
-        return null;
-      }
-    },
-    publishPage(slug) {
-      // Não reverte Despublicação: webhook atrasado/reenviado do MP não pode
-      // recolocar no ar uma página que o dono escondeu.
-      sqlite.prepare(`UPDATE pages SET status='published', updated_at=datetime('now') WHERE slug=? AND status != 'unpublished'`).run(slug);
-    },
-    claimPage({ slug, claimToken, ownerEmail }) {
-      // Token é a prova de posse; Rascunho não é reivindicável (claim só pós-pagamento).
-      const r = sqlite.prepare(`UPDATE pages SET owner_email=?, updated_at=datetime('now')
-        WHERE slug=? AND claim_token=? AND claim_token != '' AND status != 'draft'`)
-        .run(ownerEmail, slug, claimToken);
-      return r.changes > 0;
-    },
-    listPagesByOwner(email) {
-      return sqlite.prepare(`SELECT slug, status, data, created_at FROM pages WHERE owner_email=? ORDER BY created_at DESC`).all(email)
-        .map(r => {
-          let titulo = '';
-          try { titulo = JSON.parse(r.data).titulo || ''; } catch { /* ignora corrompido */ }
-          return { slug: r.slug, titulo, status: r.status, criadaEm: r.created_at };
-        });
-    },
-    unpublishPage(slug, ownerEmail) {
-      const r = sqlite.prepare(`UPDATE pages SET status='unpublished', updated_at=datetime('now')
-        WHERE slug=? AND owner_email=? AND owner_email != '' AND status='published'`).run(slug, ownerEmail);
-      return r.changes > 0;
-    },
-    republishPage(slug, ownerEmail) {
-      const r = sqlite.prepare(`UPDATE pages SET status='published', updated_at=datetime('now')
-        WHERE slug=? AND owner_email=? AND owner_email != '' AND status='unpublished'`).run(slug, ownerEmail);
-      return r.changes > 0;
-    },
     upsertUser({ email, name = '', picture = '' }) {
       sqlite.prepare(`INSERT INTO users (email, name, picture) VALUES (?, ?, ?)
-        ON CONFLICT(email) DO UPDATE SET name=CASE WHEN excluded.name != '' THEN excluded.name ELSE name END,
-          picture=CASE WHEN excluded.picture != '' THEN excluded.picture ELSE picture END`)
+        ON CONFLICT(email) DO UPDATE SET
+          name = CASE WHEN excluded.name != '' THEN excluded.name ELSE name END,
+          picture = CASE WHEN excluded.picture != '' THEN excluded.picture ELSE picture END`)
         .run(email, name, picture);
       return this.getUser(email);
     },
     getUser(email) { return sqlite.prepare('SELECT * FROM users WHERE email = ?').get(email); },
-    setUserPhone(email, phone) {
-      sqlite.prepare('UPDATE users SET phone=? WHERE email=?').run(phone, email);
+    updateUser(email, { name, onboarding, termsAccepted }) {
+      if (name !== undefined) sqlite.prepare('UPDATE users SET name=? WHERE email=?').run(String(name).slice(0, 80), email);
+      if (onboarding !== undefined) sqlite.prepare('UPDATE users SET onboarding=? WHERE email=?').run(JSON.stringify(onboarding), email);
+      if (termsAccepted) sqlite.prepare(`UPDATE users SET terms_accepted_at=datetime('now') WHERE email=? AND terms_accepted_at IS NULL`).run(email);
+      return this.getUser(email);
     },
-    createLoginToken({ token, email, claims = [], expiresAt }) {
-      sqlite.prepare('INSERT INTO login_tokens (token, email, claims, expires_at) VALUES (?, ?, ?, ?)')
-        .run(token, email, JSON.stringify(claims), expiresAt);
+
+    createCouple({ name, milestoneDate, milestoneLabel = '', creatorEmail }) {
+      const existing = sqlite.prepare('SELECT couple_id FROM couple_members WHERE user_email=?').get(creatorEmail);
+      if (existing) throw new Error('Usuário já tem um espaço');
+      const tx = sqlite.transaction(() => {
+        const r = sqlite.prepare('INSERT INTO couples (name, milestone_date, milestone_label) VALUES (?, ?, ?)')
+          .run(name, milestoneDate, milestoneLabel);
+        sqlite.prepare(`INSERT INTO couple_members (couple_id, user_email, role) VALUES (?, ?, 'creator')`)
+          .run(r.lastInsertRowid, creatorEmail);
+        return r.lastInsertRowid;
+      });
+      const id = tx();
+      return sqlite.prepare('SELECT * FROM couples WHERE id=?').get(id);
+    },
+    getCoupleByUser(email) {
+      const m = sqlite.prepare('SELECT couple_id FROM couple_members WHERE user_email=?').get(email);
+      if (!m) return null;
+      const couple = sqlite.prepare('SELECT * FROM couples WHERE id=?').get(m.couple_id);
+      couple.members = sqlite.prepare(`
+        SELECT cm.user_email AS email, cm.role, u.name, u.picture
+        FROM couple_members cm JOIN users u ON u.email = cm.user_email
+        WHERE cm.couple_id=? ORDER BY cm.joined_at`).all(m.couple_id);
+      return couple;
+    },
+    updateCouple(id, memberEmail, { name, milestoneDate, milestoneLabel }) {
+      const m = sqlite.prepare('SELECT 1 FROM couple_members WHERE couple_id=? AND user_email=?').get(id, memberEmail);
+      if (!m) return false;
+      if (name !== undefined) sqlite.prepare('UPDATE couples SET name=? WHERE id=?').run(String(name).slice(0, 80), id);
+      if (milestoneDate !== undefined) sqlite.prepare('UPDATE couples SET milestone_date=? WHERE id=?').run(milestoneDate, id);
+      if (milestoneLabel !== undefined) sqlite.prepare('UPDATE couples SET milestone_label=? WHERE id=?').run(String(milestoneLabel).slice(0, 60), id);
+      return true;
+    },
+
+    createInvite(coupleId, createdBy) {
+      sqlite.prepare(`UPDATE invites SET status='revoked' WHERE couple_id=? AND status='pending'`).run(coupleId);
+      // Retry em colisão de código (31^6 ≈ 887M combinações; colisão é rara)
+      for (let i = 0; i < 5; i++) {
+        const code = generateInviteCode();
+        try {
+          sqlite.prepare('INSERT INTO invites (code, couple_id, created_by) VALUES (?, ?, ?)').run(code, coupleId, createdBy);
+          return this.getInvite(code);
+        } catch { /* código já existe, tenta outro */ }
+      }
+      throw new Error('Não conseguimos gerar um código de convite');
+    },
+    getInvite(code) {
+      return sqlite.prepare('SELECT * FROM invites WHERE code=?').get(String(code).toUpperCase());
+    },
+    acceptInvite(code, email) {
+      const inv = this.getInvite(code);
+      if (!inv || inv.status !== 'pending') return false;
+      const already = sqlite.prepare('SELECT 1 FROM couple_members WHERE user_email=?').get(email);
+      if (already) return false;
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare(`INSERT INTO couple_members (couple_id, user_email, role) VALUES (?, ?, 'partner')`).run(inv.couple_id, email);
+        sqlite.prepare(`UPDATE invites SET status='accepted', accepted_by=? WHERE code=?`).run(email, inv.code);
+      });
+      tx();
+      return true;
+    },
+
+    createLoginToken({ token, email, expiresAt }) {
+      sqlite.prepare('INSERT INTO login_tokens (token, email, expires_at) VALUES (?, ?, ?)').run(token, email, expiresAt);
     },
     consumeLoginToken(token) {
       // Uso único: marca used_at na mesma operação que valida.
       const row = sqlite.prepare(`SELECT * FROM login_tokens WHERE token=? AND used_at IS NULL AND expires_at > datetime('now')`).get(token);
       if (!row) return null;
       sqlite.prepare(`UPDATE login_tokens SET used_at=datetime('now') WHERE token=?`).run(token);
-      let claims = [];
-      try { claims = JSON.parse(row.claims); } catch { /* ignora corrompido */ }
-      return { email: row.email, claims };
-    },
-    uniqueSlug(titulo) {
-      const base = slugify(titulo);
-      let slug = base, n = 2;
-      while (this.getPageBySlug(slug)) slug = `${base}-${n++}`;
-      return slug;
-    },
-    savePayment({ id, slug, status, amount }) {
-      sqlite.prepare(`INSERT INTO payments (id, slug, status, amount) VALUES (?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET status=excluded.status, updated_at=datetime('now')`)
-        .run(String(id), slug, status, amount);
-    },
-    getPayment(id) { return sqlite.prepare('SELECT * FROM payments WHERE id = ?').get(String(id)); },
-    listPages() {
-      return sqlite.prepare('SELECT slug, status, email, created_at, updated_at, data FROM pages ORDER BY created_at DESC').all()
-        .map(r => {
-          let titulo = '', dataExpiracao = '';
-          try { const d = JSON.parse(r.data); titulo = d.titulo || ''; dataExpiracao = d.dataExpiracao || ''; } catch { /* ignora corrompido */ }
-          return { slug: r.slug, titulo, status: r.status, email: r.email, dataExpiracao, criadaEm: r.created_at, atualizadaEm: r.updated_at };
-        });
-    },
-    listPayments() {
-      return sqlite.prepare('SELECT * FROM payments ORDER BY created_at DESC').all();
+      return { email: row.email };
     },
     // Só para testes: lê o último token de login pendente de um email
     _rawLoginToken(email) {
