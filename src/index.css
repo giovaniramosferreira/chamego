@@ -1,43 +1,43 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600&family=Inter:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  body {
-    @apply bg-cream-50 text-ink-900 font-sans antialiased;
-  }
+:root {
+  --bg: #f6f0e7;
+  --surface: #fffdf8;
+  --bg-tint: #efe6d8;
+  --accent: #bd6a4b;
+  --accent-press: #a5573b;
+  --accent-ink: #fff8f2;
+  --ink: #2b2521;
+  --ink-2: #6f645b;
+  --ink-3: #a89d93;
+  --line: color-mix(in srgb, var(--ink) 11%, transparent);
+  --line-2: color-mix(in srgb, var(--ink) 18%, transparent);
+  --accent-soft: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  --accent-line: color-mix(in srgb, var(--accent) 30%, transparent);
+  --ease: cubic-bezier(.22, .61, .36, 1);
 }
 
-@layer components {
-  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-full bg-wine-700 text-white font-semibold px-7 py-4 text-base transition-all active:scale-[0.98] hover:bg-wine-600 shadow-sm min-h-[52px]; }
-  .btn-ghost   { @apply inline-flex items-center justify-center gap-2 rounded-full border border-ink-900/15 bg-white/60 text-ink-900 font-semibold px-6 py-3.5 min-h-[48px]; }
-  .input-base  { @apply w-full rounded-2xl border border-ink-900/15 bg-white px-5 py-4 text-base text-ink-900 placeholder:text-ink-400 focus:outline-none focus:border-wine-700 min-h-[52px]; }
-  .card        { @apply bg-white rounded-3xl border border-ink-900/10 shadow-[0_1px_3px_rgba(26,23,20,0.06)]; }
-  .eyebrow     { @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-400; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 10px;
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* Transição entre telas do app (fade + slide sutil do handoff) */
+.screen-enter {
+  animation: screenIn .3s var(--ease);
 }
-::-webkit-scrollbar-track {
-  @apply bg-cream-50;
-}
-::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-rose-200 border-2 border-cream-50;
-}
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-rose-300;
+@keyframes screenIn {
+  from { opacity: 0; transform: translateX(14px); }
+  to { opacity: 1; transform: none; }
 }
 
-/* Custom fade animation for Polaroids */
-@keyframes polaroid-fade {
-  0%, 100% { opacity: 0; transform: scale(0.98) rotate(-2deg); }
-  5%, 95% { opacity: 1; transform: scale(1) rotate(0deg); }
-}
-
-.animate-polaroid {
-  animation: polaroid-fade 5s infinite ease-in-out;
+@media (prefers-reduced-motion: reduce) {
+  .screen-enter { animation: none; }
 }

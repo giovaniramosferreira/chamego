@@ -1,32 +1,23 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {
-        cream: { 50: '#FAF7F2', 100: '#F3EDE3', 200: '#E8DFD0' },
-        ink: { 900: '#1A1714', 600: '#5C554C', 400: '#948C80' },
-        wine: { 700: '#B3284F', 600: '#C9355F', 100: '#F7E3E9' },
+        bg: 'var(--bg)',
+        surface: 'var(--surface)',
+        tint: 'var(--bg-tint)',
+        accent: { DEFAULT: 'var(--accent)', press: 'var(--accent-press)', soft: 'var(--accent-soft)', ink: 'var(--accent-ink)' },
+        ink: { DEFAULT: 'var(--ink)', 2: 'var(--ink-2)', 3: 'var(--ink-3)' },
       },
+      borderColor: { line: 'var(--line)', 'line-2': 'var(--line-2)', 'accent-line': 'var(--accent-line)' },
       fontFamily: {
         display: ['Fraunces', 'Georgia', 'serif'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['"Hanken Grotesk"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
-      animation: {
-        'float-hearts': 'float 4s ease-in-out infinite',
-      },
-      keyframes: {
-        float: {
-          '0%': { transform: 'translateY(100vh) scale(0.5)', opacity: '0' },
-          '10%': { opacity: '0.8' },
-          '90%': { opacity: '0.8' },
-          '100%': { transform: 'translateY(-10vh) scale(1.2)', opacity: '0' },
-        }
-      }
+      borderRadius: { card: '22px', btn: '13px', img: '24px' },
+      transitionTimingFunction: { brand: 'cubic-bezier(.22,.61,.36,1)' },
     },
   },
   plugins: [],
-}
+};
