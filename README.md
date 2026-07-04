@@ -1,29 +1,32 @@
-# Chamego 💌
+# Chamego 💛
 
-Presente digital para casais: o Criador monta uma Página do Casal (fotos, mensagem, música, contador, jogos e conteúdo gerado por IA), paga R$19,90 uma única vez via Pix e compartilha por link bonito ou QR Code.
+App para casais organizarem a vida a dois: agenda, listas, momentos (memórias)
+e uma camada leve de conexão emocional — num espaço privado do casal.
+
+> Pivot em julho/2026: o produto anterior (presente digital "Página do Casal")
+> vive no branch `legacy-presente-digital`.
 
 ## Stack
-- **Frontend:** React 19 + Vite + Tailwind CSS (estética editorial: Fraunces + Inter)
-- **Backend:** Express (monolito — serve API + build do frontend), SQLite (better-sqlite3), uploads em disco
-- **Integrações:** Mercado Pago (Pix dinâmico + webhook), Google Places API New (roteiro de dates com lugares reais), Anthropic Claude Haiku 4.5 (carta, sinastria, cupido, score), OpenAI Whisper (transcrição de áudio, opcional)
+- **Frontend:** React 19 + Vite + Tailwind CSS (mobile-first; Fraunces + Hanken Grotesk)
+- **Backend:** Express (monolito — serve API + build do frontend), SQLite (better-sqlite3)
+- **Auth:** sem senha — Google Identity Services + Link Mágico por email
 
 ## Rodando local
 ```bash
 npm install
-npm run dev   # sobe backend (:3001) + vite (:5173) juntos
+npm run dev   # backend (:3001) + vite (:5173)
 ```
+Sem SMTP configurado, o link mágico é impresso no console do servidor.
 
 ## Variáveis de ambiente
 | Var | Obrigatória | Para quê |
 |---|---|---|
-| `MP_ACCESS_TOKEN` | produção | Pix Mercado Pago |
-| `GOOGLE_MAPS_API_KEY` | produção | Places (roteiro de dates) |
-| `ANTHROPIC_API_KEY` | recomendada | textos de IA (sem ela usa fallbacks) |
-| `OPENAI_API_KEY` | opcional | transcrição Whisper |
-| `PUBLIC_URL` | produção | base p/ webhook e links |
-| `DATA_DIR` | produção | disco persistente (SQLite + uploads) |
-
-Sem chaves, tudo degrada com elegância (textos simulados, roteiro vazio, pagamento indisponível).
+| `SESSION_SECRET` | produção | assina o cookie de sessão |
+| `GOOGLE_CLIENT_ID` | recomendada | botão "Continuar com Google" |
+| `SMTP_HOST/PORT/USER/PASS` | produção | envio do Link Mágico |
+| `MAIL_FROM` | opcional | remetente dos emails |
+| `PUBLIC_URL` | produção | base p/ links de convite e magic link |
+| `DATA_DIR` | produção | disco persistente (SQLite) |
 
 ## Testes
 ```bash
@@ -32,8 +35,11 @@ npx eslint .    # lint
 npm run build   # build de produção
 ```
 
-## Deploy (Render)
-Blueprint em `render.yaml` (próxima task): Web Service Node, build `npm install && npm run build`, start `node backend/server.js`, disco persistente em `/var/data` (`DATA_DIR`). Webhook do Mercado Pago aponta para `https://<app>/api/webhooks/mercadopago`.
-
 ## Fluxo
-Landing → Wizard (6 passos) → `POST /api/drafts` (IA gera conteúdo, vira Rascunho) → Checkout Pix → webhook aprova → Publicação → `/p/:slug` no ar para sempre.
+Landing → Entrar (Google/Link Mágico) → Termos → Onboarding → Espaço do casal
+→ Convite do parceiro → App (Início, Agenda, Listas, Momentos, Vocês).
+Fase 1 entrega Início funcional; demais abas chegam nas fases 2–4.
+
+## Referência de design
+Protótipos navegáveis em `design_handoff_chamego/` (landing hifi + área logada).
+Specs e planos em `docs/superpowers/`.
