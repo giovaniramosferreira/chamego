@@ -5,7 +5,8 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // design_handoff_chamego é protótipo de referência, não código de produção
+  globalIgnores(['dist', 'design_handoff_chamego']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
