@@ -103,6 +103,27 @@ app.get('/api/me', requireAuth, (req, res) => {
   });
 });
 
+const ONBOARDING_KEYS = ['goal', 'stage', 'alone'];
+app.patch('/api/me', requireAuth, (req, res) => {
+  const { name, onboarding, acceptTerms } = req.body || {};
+  db.upsertUser({ email: req.user.email });
+  const patch = {};
+  if (typeof name === 'string' && name.trim()) patch.name = name.trim();
+  if (onboarding && typeof onboarding === 'object') {
+    let current = {};
+    try { current = JSON.parse(db.getUser(req.user.email)?.onboarding || '{}'); } catch { /* vazio */ }
+    for (const k of ONBOARDING_KEYS) {
+      if (typeof onboarding[k] === 'string') current[k] = onboarding[k].slice(0, 30);
+    }
+    patch.onboarding = current;
+  }
+  if (acceptTerms === true) patch.termsAccepted = true;
+  const user = db.updateUser(req.user.email, patch);
+  let ob = {};
+  try { ob = JSON.parse(user.onboarding); } catch { /* vazio */ }
+  res.json({ user: { email: user.email, name: user.name, picture: user.picture, onboarding: ob, termsAcceptedAt: user.terms_accepted_at } });
+});
+
 // SPA em produção
 const distDir = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {
