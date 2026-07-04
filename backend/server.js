@@ -124,6 +124,67 @@ app.patch('/api/me', requireAuth, (req, res) => {
   res.json({ user: { email: user.email, name: user.name, picture: user.picture, onboarding: ob, termsAcceptedAt: user.terms_accepted_at } });
 });
 
+/* ── Espaço do casal ─────────────────────────────────────────────────────── */
+
+app.post('/api/couples', requireAuth, (req, res) => {
+  const { name, milestoneDate, milestoneLabel } = req.body || {};
+  if (!name?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(milestoneDate || '')) {
+    return res.status(400).json({ error: 'Informe o nome do espaço e a data' });
+  }
+  db.upsertUser({ email: req.user.email });
+  try {
+    db.createCouple({ name: name.trim().slice(0, 80), milestoneDate, milestoneLabel: milestoneLabel || '', creatorEmail: req.user.email });
+  } catch {
+    return res.status(409).json({ error: 'Você já tem um espaço' });
+  }
+  res.json({ couple: db.getCoupleByUser(req.user.email) });
+});
+
+app.patch('/api/couples/:id', requireAuth, (req, res) => {
+  const { name, milestoneDate, milestoneLabel } = req.body || {};
+  if (milestoneDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(milestoneDate)) {
+    return res.status(400).json({ error: 'Data inválida' });
+  }
+  const ok = db.updateCouple(Number(req.params.id), req.user.email, { name, milestoneDate, milestoneLabel });
+  if (!ok) return res.status(404).json({ error: 'Espaço não encontrado' });
+  res.json({ couple: db.getCoupleByUser(req.user.email) });
+});
+
+/* ── Convites ────────────────────────────────────────────────────────────── */
+
+function invitePreview(inv) {
+  const creator = db.getUser(inv.created_by);
+  // o convite pertence ao espaço do criador
+  const couple = db.getCoupleByUser(inv.created_by);
+  return { code: inv.code, coupleName: couple?.name || '', invitedBy: creator?.name || inv.created_by };
+}
+
+app.post('/api/couples/:id/invites', requireAuth, (req, res) => {
+  const couple = db.getCoupleByUser(req.user.email);
+  if (!couple || couple.id !== Number(req.params.id)) return res.status(404).json({ error: 'Espaço não encontrado' });
+  if (couple.members.length >= 2) return res.status(409).json({ error: 'O espaço já tem os dois' });
+  const invite = db.createInvite(couple.id, req.user.email);
+  const base = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+  res.json({ invite: { code: invite.code, url: `${base}/convite/${invite.code}` } });
+});
+
+app.get('/api/invites/:code', (req, res) => {
+  const inv = db.getInvite(req.params.code);
+  if (!inv) return res.status(404).json({ error: 'Convite não encontrado' });
+  if (inv.status !== 'pending') return res.status(410).json({ error: 'Este convite já foi usado' });
+  res.json(invitePreview(inv));
+});
+
+app.post('/api/invites/:code/accept', requireAuth, (req, res) => {
+  const inv = db.getInvite(req.params.code);
+  if (!inv) return res.status(404).json({ error: 'Convite não encontrado' });
+  if (inv.status !== 'pending') return res.status(410).json({ error: 'Este convite já foi usado' });
+  db.upsertUser({ email: req.user.email });
+  if (db.getCoupleByUser(req.user.email)) return res.status(409).json({ error: 'Você já tem um espaço' });
+  if (!db.acceptInvite(inv.code, req.user.email)) return res.status(410).json({ error: 'Este convite já foi usado' });
+  res.json({ couple: db.getCoupleByUser(req.user.email) });
+});
+
 // SPA em produção
 const distDir = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {
