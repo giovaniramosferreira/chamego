@@ -58,6 +58,13 @@ export function createDb(file) {
   sqlite.pragma('journal_mode = WAL');
   for (const ddl of SCHEMA) sqlite.prepare(ddl).run();
 
+  // Migração de bancos antigos: CREATE TABLE IF NOT EXISTS não altera uma tabela
+  // que já existe, então colunas novas precisam ser adicionadas à mão. Em produção
+  // a tabela `users` herdada do produto anterior não tinha estas colunas.
+  for (const ddl of ["ADD COLUMN onboarding TEXT DEFAULT '{}'", 'ADD COLUMN terms_accepted_at TEXT']) {
+    try { sqlite.prepare(`ALTER TABLE users ${ddl}`).run(); } catch { /* coluna já existe */ }
+  }
+
   return {
     upsertUser({ email, name = '', picture = '' }) {
       sqlite.prepare(`INSERT INTO users (email, name, picture) VALUES (?, ?, ?)
