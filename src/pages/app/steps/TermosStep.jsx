@@ -8,13 +8,18 @@ export default function TermosStep({ onDone }) {
   const { refresh } = useSession();
   const [checked, setChecked] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   async function accept() {
     setSaving(true);
+    setError('');
     try {
       await api('/api/me', { method: 'PATCH', body: { acceptTerms: true } });
       await refresh();
       onDone();
+    } catch (e) {
+      // Diagnóstico temporário: mostra status/mensagem reais do servidor.
+      setError(e.status ? `HTTP ${e.status}: ${e.message}` : `Falha de rede: ${e.message}`);
     } finally {
       setSaving(false);
     }
@@ -35,6 +40,7 @@ export default function TermosStep({ onDone }) {
         <span className="text-[.92rem] font-medium">Li e aceito os termos e a política de privacidade</span>
       </button>
       <Btn block disabled={!checked || saving} onClick={accept}>Continuar</Btn>
+      {error && <p className="text-accent-press text-sm mt-3 text-center break-words">{error}</p>}
     </div>
   );
 }
