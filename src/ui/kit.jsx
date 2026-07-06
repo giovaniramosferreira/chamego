@@ -115,3 +115,37 @@ export function ProgressDots({ step, total }) {
 export function Logo({ className = '' }) {
   return <span className={`font-display italic tracking-tight ${className}`}>chamego<span className="text-accent">.</span></span>;
 }
+
+// Bottom sheet para formulários de criação/edição (mobile-first).
+export function Sheet({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center" role="dialog" aria-modal="true">
+      <button aria-label="Fechar" onClick={onClose} className="absolute inset-0 bg-ink/40 backdrop-blur-[2px] animate-[fade_.2s_ease]" />
+      <div className="relative w-full max-w-[430px] bg-bg rounded-t-[22px] px-5 pt-3 pb-[max(env(safe-area-inset-bottom),20px)] shadow-[0_-8px_30px_rgba(43,37,33,.18)] max-h-[88vh] overflow-y-auto sheet-enter">
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-ink-3/30" />
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-xl">{title}</h2>
+          <button onClick={onClose} aria-label="Fechar" className="w-8 h-8 rounded-full grid place-items-center text-ink-2 hover:bg-accent-soft/50">
+            <Icon name="close" size={18} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export function Fab({ onClick, label = 'Adicionar' }) {
+  return (
+    <div className="fixed bottom-[84px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-5 z-30 flex justify-end pointer-events-none">
+      <button onClick={onClick} aria-label={label}
+        className="pointer-events-auto w-14 h-14 rounded-full bg-accent text-accent-ink shadow-[0_6px_18px_rgba(189,106,75,.45)] grid place-items-center hover:bg-accent-press active:scale-95 transition-all">
+        <Icon name="plus" size={24} />
+      </button>
+    </div>
+  );
+}
+
+export function Spinner({ className = '' }) {
+  return <span className={`inline-block w-5 h-5 rounded-full border-2 border-accent/30 border-t-accent animate-spin ${className}`} />;
+}

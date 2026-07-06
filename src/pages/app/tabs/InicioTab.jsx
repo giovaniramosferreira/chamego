@@ -1,6 +1,8 @@
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { api } from '../../../lib/api.js';
 import { useSession } from '../../../lib/session-context.js';
-import { Btn, Card, Logo } from '../../../ui/kit.jsx';
+import { Btn, Card, Logo, Row, RowList } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 function daysTogether(iso) {
@@ -19,10 +21,28 @@ function greeting() {
   return 'Boa noite';
 }
 
+function eventDateLabel(iso) {
+  const today = new Date().toLocaleDateString('en-CA');
+  const tomorrow = new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA');
+  if (iso === today) return 'Hoje';
+  if (iso === tomorrow) return 'Amanhã';
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
+}
+
 export default function InicioTab() {
+  const nav = useNavigate();
   const { user, couple, partner } = useSession();
   const solo = !partner;
   const firstName = (user.name || user.email).split(/[\s@]/)[0];
+
+  const [next, setNext] = useState(null);
+  const [conn, setConn] = useState(null);
+  useEffect(() => {
+    const today = new Date().toLocaleDateString('en-CA');
+    api('/api/events').then((d) => setNext((d.events || []).find((e) => e.date >= today) || false)).catch(() => setNext(false));
+    api('/api/connection').then(setConn).catch(() => {});
+  }, []);
+  const needsCheckin = conn && !conn.myCheckin;
 
   return (
     <div>
@@ -57,11 +77,20 @@ export default function InicioTab() {
         <p className="text-sm text-ink-2">desde {formatDate(couple.milestone_date)}</p>
       </Card>
 
-      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mt-6 mb-2">Em breve por aqui</p>
-      <Card className="text-ink-2 text-[.95rem]">
-        Próximos eventos, tarefas pendentes e o check-in do dia vão aparecer neste
-        painel conforme Agenda, Listas e Vocês forem chegando. ✦
-      </Card>
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mt-6 mb-2">Do dia de vocês</p>
+      <RowList>
+        {next ? (
+          <Row icon="calendar" title={next.title}
+            sub={`${eventDateLabel(next.date)}${next.time ? ` · ${next.time}` : ''}${next.location ? ` · ${next.location}` : ''}`}
+            onClick={() => nav('/app/agenda')} />
+        ) : (
+          <Row icon="calendar" title="Nenhum evento marcado" sub="Adicione o próximo date de vocês" onClick={() => nav('/app/agenda')} />
+        )}
+        <Row icon="heart"
+          title={needsCheckin ? 'Faça seu check-in de hoje' : 'Check-in de hoje feito 💛'}
+          sub={needsCheckin ? 'Como você está?' : 'Veja como está seu par'}
+          onClick={() => nav('/app/voces')} />
+      </RowList>
     </div>
   );
 }

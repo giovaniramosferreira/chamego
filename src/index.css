@@ -38,6 +38,14 @@ body {
   to { opacity: 1; transform: none; }
 }
 
+/* Bottom sheet: sobe de baixo */
+.sheet-enter { animation: sheetIn .28s var(--ease); }
+@keyframes sheetIn {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
 @media (prefers-reduced-motion: reduce) {
-  .screen-enter { animation: none; }
+  .screen-enter, .sheet-enter { animation: none; }
 }

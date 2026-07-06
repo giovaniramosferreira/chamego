@@ -50,6 +50,75 @@ const SCHEMA = [
     expires_at TEXT NOT NULL,
     used_at TEXT
   )`,
+  /* ── Conteúdo das abas (Agenda, Listas, Momentos, Vocês) ── */
+  `CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    title TEXT NOT NULL,
+    notes TEXT DEFAULT '',
+    date TEXT NOT NULL,
+    time TEXT DEFAULT '',
+    location TEXT DEFAULT '',
+    shared INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS lists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    title TEXT NOT NULL,
+    icon TEXT DEFAULT 'list',
+    kind TEXT NOT NULL DEFAULT 'shared' CHECK (kind IN ('shared','individual','wishlist')),
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS list_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    list_id INTEGER NOT NULL REFERENCES lists(id),
+    text TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS moments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    text TEXT DEFAULT '',
+    date TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS moment_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    moment_id INTEGER NOT NULL REFERENCES moments(id),
+    url TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS checkins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL,
+    date TEXT NOT NULL,
+    mood TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (couple_id, user_email, date)
+  )`,
+  `CREATE TABLE IF NOT EXISTS goals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    title TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    sender_email TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
 ];
 
 export function createDb(file) {
@@ -155,6 +224,177 @@ export function createDb(file) {
     // Só para testes: lê o último token de login pendente de um email
     _rawLoginToken(email) {
       return sqlite.prepare('SELECT token FROM login_tokens WHERE email=? AND used_at IS NULL ORDER BY rowid DESC').get(email)?.token;
+    },
+
+    /* ── Agenda ── */
+    listEvents(coupleId) {
+      return sqlite.prepare(`SELECT * FROM events WHERE couple_id=? ORDER BY date, CASE WHEN time='' THEN 1 ELSE 0 END, time`).all(coupleId);
+    },
+    createEvent(coupleId, email, { title, notes = '', date, time = '', location = '', shared = true }) {
+      const r = sqlite.prepare(`INSERT INTO events (couple_id, created_by, title, notes, date, time, location, shared)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(coupleId, email, String(title).slice(0, 120), String(notes).slice(0, 500), date, time, String(location).slice(0, 120), shared ? 1 : 0);
+      return sqlite.prepare('SELECT * FROM events WHERE id=?').get(r.lastInsertRowid);
+    },
+    updateEvent(coupleId, id, patch) {
+      const ev = sqlite.prepare('SELECT * FROM events WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!ev) return null;
+      const fields = { title: 120, notes: 500, date: 10, time: 5, location: 120 };
+      for (const [k, max] of Object.entries(fields)) {
+        if (patch[k] !== undefined) sqlite.prepare(`UPDATE events SET ${k}=? WHERE id=?`).run(String(patch[k]).slice(0, max), id);
+      }
+      if (patch.shared !== undefined) sqlite.prepare('UPDATE events SET shared=? WHERE id=?').run(patch.shared ? 1 : 0, id);
+      return sqlite.prepare('SELECT * FROM events WHERE id=?').get(id);
+    },
+    deleteEvent(coupleId, id) {
+      return sqlite.prepare('DELETE FROM events WHERE id=? AND couple_id=?').run(id, coupleId).changes > 0;
+    },
+
+    /* ── Listas ── */
+    listLists(coupleId) {
+      return sqlite.prepare(`
+        SELECT l.*,
+          (SELECT COUNT(*) FROM list_items i WHERE i.list_id=l.id) AS total,
+          (SELECT COUNT(*) FROM list_items i WHERE i.list_id=l.id AND i.done=1) AS done
+        FROM lists l WHERE l.couple_id=? ORDER BY l.created_at DESC`).all(coupleId);
+    },
+    getList(coupleId, id) {
+      const list = sqlite.prepare('SELECT * FROM lists WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!list) return null;
+      list.items = sqlite.prepare('SELECT * FROM list_items WHERE list_id=? ORDER BY done, position, id').all(id);
+      return list;
+    },
+    createList(coupleId, email, { title, icon = 'list', kind = 'shared' }) {
+      const k = ['shared', 'individual', 'wishlist'].includes(kind) ? kind : 'shared';
+      const r = sqlite.prepare('INSERT INTO lists (couple_id, created_by, title, icon, kind) VALUES (?, ?, ?, ?, ?)')
+        .run(coupleId, email, String(title).slice(0, 80), String(icon).slice(0, 20), k);
+      return this.getList(coupleId, r.lastInsertRowid);
+    },
+    updateList(coupleId, id, { title, icon }) {
+      const list = sqlite.prepare('SELECT * FROM lists WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!list) return null;
+      if (title !== undefined) sqlite.prepare('UPDATE lists SET title=? WHERE id=?').run(String(title).slice(0, 80), id);
+      if (icon !== undefined) sqlite.prepare('UPDATE lists SET icon=? WHERE id=?').run(String(icon).slice(0, 20), id);
+      return this.getList(coupleId, id);
+    },
+    deleteList(coupleId, id) {
+      const list = sqlite.prepare('SELECT 1 FROM lists WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!list) return false;
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare('DELETE FROM list_items WHERE list_id=?').run(id);
+        sqlite.prepare('DELETE FROM lists WHERE id=?').run(id);
+      });
+      tx();
+      return true;
+    },
+    addItem(coupleId, listId, text) {
+      const list = sqlite.prepare('SELECT 1 FROM lists WHERE id=? AND couple_id=?').get(listId, coupleId);
+      if (!list) return null;
+      const pos = (sqlite.prepare('SELECT MAX(position) m FROM list_items WHERE list_id=?').get(listId)?.m || 0) + 1;
+      sqlite.prepare('INSERT INTO list_items (list_id, text, position) VALUES (?, ?, ?)').run(listId, String(text).slice(0, 200), pos);
+      return this.getList(coupleId, listId);
+    },
+    updateItem(coupleId, itemId, { text, done }) {
+      const row = sqlite.prepare(`SELECT li.id, li.list_id FROM list_items li
+        JOIN lists l ON l.id=li.list_id WHERE li.id=? AND l.couple_id=?`).get(itemId, coupleId);
+      if (!row) return null;
+      if (text !== undefined) sqlite.prepare('UPDATE list_items SET text=? WHERE id=?').run(String(text).slice(0, 200), itemId);
+      if (done !== undefined) sqlite.prepare('UPDATE list_items SET done=? WHERE id=?').run(done ? 1 : 0, itemId);
+      return this.getList(coupleId, row.list_id);
+    },
+    deleteItem(coupleId, itemId) {
+      const row = sqlite.prepare(`SELECT li.id, li.list_id FROM list_items li
+        JOIN lists l ON l.id=li.list_id WHERE li.id=? AND l.couple_id=?`).get(itemId, coupleId);
+      if (!row) return null;
+      sqlite.prepare('DELETE FROM list_items WHERE id=?').run(itemId);
+      return this.getList(coupleId, row.list_id);
+    },
+
+    /* ── Momentos ── */
+    listMoments(coupleId) {
+      const rows = sqlite.prepare('SELECT * FROM moments WHERE couple_id=? ORDER BY date DESC, id DESC').all(coupleId);
+      for (const m of rows) {
+        m.photos = sqlite.prepare('SELECT url FROM moment_photos WHERE moment_id=? ORDER BY position, id').all(m.id).map(p => p.url);
+      }
+      return rows;
+    },
+    createMoment(coupleId, email, { text = '', date }, photoUrls = []) {
+      const tx = sqlite.transaction(() => {
+        const r = sqlite.prepare('INSERT INTO moments (couple_id, created_by, text, date) VALUES (?, ?, ?, ?)')
+          .run(coupleId, email, String(text).slice(0, 1000), date);
+        photoUrls.forEach((url, i) => sqlite.prepare('INSERT INTO moment_photos (moment_id, url, position) VALUES (?, ?, ?)').run(r.lastInsertRowid, url, i));
+        return r.lastInsertRowid;
+      });
+      const id = tx();
+      const m = sqlite.prepare('SELECT * FROM moments WHERE id=?').get(id);
+      m.photos = sqlite.prepare('SELECT url FROM moment_photos WHERE moment_id=? ORDER BY position, id').all(id).map(p => p.url);
+      return m;
+    },
+    deleteMoment(coupleId, id) {
+      const m = sqlite.prepare('SELECT 1 FROM moments WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!m) return false;
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare('DELETE FROM moment_photos WHERE moment_id=?').run(id);
+        sqlite.prepare('DELETE FROM moments WHERE id=?').run(id);
+      });
+      tx();
+      return true;
+    },
+
+    /* ── Vocês: check-in, metas, chat ── */
+    upsertCheckin(coupleId, email, { mood, note = '' }) {
+      const date = new Date().toISOString().slice(0, 10);
+      sqlite.prepare(`INSERT INTO checkins (couple_id, user_email, date, mood, note) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(couple_id, user_email, date) DO UPDATE SET mood=excluded.mood, note=excluded.note`)
+        .run(coupleId, email, date, String(mood).slice(0, 20), String(note).slice(0, 300));
+      return sqlite.prepare('SELECT * FROM checkins WHERE couple_id=? AND user_email=? AND date=?').get(coupleId, email, date);
+    },
+    todayCheckins(coupleId) {
+      const date = new Date().toISOString().slice(0, 10);
+      return sqlite.prepare('SELECT * FROM checkins WHERE couple_id=? AND date=?').all(coupleId, date);
+    },
+    checkinStreak(coupleId) {
+      const dates = sqlite.prepare('SELECT DISTINCT date FROM checkins WHERE couple_id=? ORDER BY date DESC').all(coupleId).map(r => r.date);
+      if (!dates.length) return 0;
+      const today = new Date().toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+      if (dates[0] !== today && dates[0] !== yesterday) return 0;
+      let streak = 0;
+      let cursor = new Date(`${dates[0]}T00:00:00`);
+      for (const d of dates) {
+        if (d === cursor.toISOString().slice(0, 10)) {
+          streak++;
+          cursor = new Date(cursor.getTime() - 86_400_000);
+        } else break;
+      }
+      return streak;
+    },
+    listGoals(coupleId) {
+      return sqlite.prepare('SELECT * FROM goals WHERE couple_id=? ORDER BY done, created_at DESC').all(coupleId);
+    },
+    createGoal(coupleId, email, title) {
+      const r = sqlite.prepare('INSERT INTO goals (couple_id, created_by, title) VALUES (?, ?, ?)').run(coupleId, email, String(title).slice(0, 120));
+      return sqlite.prepare('SELECT * FROM goals WHERE id=?').get(r.lastInsertRowid);
+    },
+    updateGoal(coupleId, id, { title, done }) {
+      const g = sqlite.prepare('SELECT * FROM goals WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!g) return null;
+      if (title !== undefined) sqlite.prepare('UPDATE goals SET title=? WHERE id=?').run(String(title).slice(0, 120), id);
+      if (done !== undefined) sqlite.prepare('UPDATE goals SET done=? WHERE id=?').run(done ? 1 : 0, id);
+      return sqlite.prepare('SELECT * FROM goals WHERE id=?').get(id);
+    },
+    deleteGoal(coupleId, id) {
+      return sqlite.prepare('DELETE FROM goals WHERE id=? AND couple_id=?').run(id, coupleId).changes > 0;
+    },
+    activeGoalsCount(coupleId) {
+      return sqlite.prepare('SELECT COUNT(*) c FROM goals WHERE couple_id=? AND done=0').get(coupleId).c;
+    },
+    listMessages(coupleId, sinceId = 0) {
+      return sqlite.prepare('SELECT * FROM messages WHERE couple_id=? AND id>? ORDER BY id').all(coupleId, sinceId);
+    },
+    createMessage(coupleId, email, text) {
+      const r = sqlite.prepare('INSERT INTO messages (couple_id, sender_email, text) VALUES (?, ?, ?)').run(coupleId, email, String(text).slice(0, 1000));
+      return sqlite.prepare('SELECT * FROM messages WHERE id=?').get(r.lastInsertRowid);
     },
   };
 }

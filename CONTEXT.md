@@ -40,8 +40,20 @@ personalizam o início. Persistido em `users.onboarding` (JSON).
 **Contador de Dias**:
 Dias desde a data-marco (`milestone_date`) do espaço — destaque do Início.
 
-**As 5 abas**: Início, Agenda, Listas, Momentos, Vocês. Fase 1 entrega Início;
-as outras têm estados "em breve".
+**As 5 abas** (todas funcionais):
+- **Início**: saudação, contador de dias, próximo evento e nudge de check-in.
+- **Agenda**: eventos do casal (`events`) — título, data, hora, local, notas,
+  compartilhado vs "só você". Visão de mês com marcadores + próximos eventos.
+- **Listas**: `lists` (compartilhada/individual/wishlist) + `list_items`
+  (concluir, remover, barra de progresso).
+- **Momentos**: linha do tempo `moments` com texto e fotos (`moment_photos`,
+  upload via multer para `DATA_DIR/uploads`, servido em `/uploads`).
+- **Vocês**: check-in de humor diário (`checkins`, streak), metas do casal
+  (`goals`), pergunta guiada da semana (rotativa) e chat privado (`messages`,
+  atualiza por polling a cada 4s).
+
+Todo conteúdo é escopado pelo Espaço do Casal (derivado da sessão, nunca do
+cliente): endpoints usam o middleware `requireCouple`.
 
 ## Relationships
 
@@ -56,3 +68,5 @@ as outras têm estados "em breve".
 - Auth sem senha (Google + Link Mágico) — herdada do produto anterior
 - Web mobile-first primeiro; app nativo é decisão futura
 - Permissões (notificações/calendário/fotos) fora do onboarding — pedidas no primeiro uso real
+- Chat do casal por polling (4s), não websockets — volume baixo não justifica infra em tempo real
+- Fotos dos Momentos no disco persistente do Render (`/var/data/uploads`), não em storage externo
