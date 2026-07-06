@@ -141,6 +141,13 @@ app.patch('/api/me', requireAuth, (req, res) => {
   res.json({ user: { email: user.email, name: user.name, picture: user.picture, onboarding: ob, termsAcceptedAt: user.terms_accepted_at } });
 });
 
+app.post('/api/me/avatar', requireAuth, upload.single('avatar'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Envie uma imagem' });
+  db.upsertUser({ email: req.user.email });
+  const user = db.setUserPicture(req.user.email, `/uploads/${req.file.filename}`);
+  res.json({ picture: user.picture });
+});
+
 /* ── Espaço do casal ─────────────────────────────────────────────────────── */
 
 app.post('/api/couples', requireAuth, (req, res) => {
@@ -275,14 +282,22 @@ app.delete('/api/items/:id', withCouple, (req, res) => {
   res.json({ list });
 });
 
-/* Momentos */
+/* Momentos — 1 foto por momento */
 app.get('/api/moments', withCouple, (req, res) => res.json({ moments: db.listMoments(req.couple.id) }));
-app.post('/api/moments', requireAuth, requireCouple, upload.array('photos', 6), (req, res) => {
+app.post('/api/moments', requireAuth, requireCouple, upload.single('photo'), (req, res) => {
   const { text, date } = req.body || {};
   const d = isDate(date) ? date : new Date().toISOString().slice(0, 10);
-  const urls = (req.files || []).map(f => `/uploads/${f.filename}`);
+  const urls = req.file ? [`/uploads/${req.file.filename}`] : [];
   if (!text?.trim() && !urls.length) return res.status(400).json({ error: 'Escreva algo ou adicione uma foto' });
   res.json({ moment: db.createMoment(req.couple.id, req.user.email, { text: text || '', date: d }, urls) });
+});
+app.patch('/api/moments/:id', requireAuth, requireCouple, upload.single('photo'), (req, res) => {
+  const { text, date, removePhoto } = req.body || {};
+  const newPhotoUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
+  const moment = db.updateMoment(req.couple.id, Number(req.params.id), { text, date },
+    { newPhotoUrl, removePhoto: removePhoto === 'true' || removePhoto === true });
+  if (!moment) return res.status(404).json({ error: 'Momento não encontrado' });
+  res.json({ moment });
 });
 app.delete('/api/moments/:id', withCouple, (req, res) => {
   if (!db.deleteMoment(req.couple.id, Number(req.params.id))) return res.status(404).json({ error: 'Momento não encontrado' });

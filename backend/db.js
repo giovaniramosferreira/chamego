@@ -144,6 +144,10 @@ export function createDb(file) {
       return this.getUser(email);
     },
     getUser(email) { return sqlite.prepare('SELECT * FROM users WHERE email = ?').get(email); },
+    setUserPicture(email, url) {
+      sqlite.prepare('UPDATE users SET picture=? WHERE email=?').run(url, email);
+      return this.getUser(email);
+    },
     updateUser(email, { name, onboarding, termsAccepted }) {
       if (name !== undefined) sqlite.prepare('UPDATE users SET name=? WHERE email=?').run(String(name).slice(0, 80), email);
       if (onboarding !== undefined) sqlite.prepare('UPDATE users SET onboarding=? WHERE email=?').run(JSON.stringify(onboarding), email);
@@ -329,6 +333,21 @@ export function createDb(file) {
       const m = sqlite.prepare('SELECT * FROM moments WHERE id=?').get(id);
       m.photos = sqlite.prepare('SELECT url FROM moment_photos WHERE moment_id=? ORDER BY position, id').all(id).map(p => p.url);
       return m;
+    },
+    updateMoment(coupleId, id, { text, date }, { newPhotoUrl, removePhoto } = {}) {
+      const m = sqlite.prepare('SELECT * FROM moments WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!m) return null;
+      const tx = sqlite.transaction(() => {
+        if (text !== undefined) sqlite.prepare('UPDATE moments SET text=? WHERE id=?').run(String(text).slice(0, 1000), id);
+        if (date !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(date)) sqlite.prepare('UPDATE moments SET date=? WHERE id=?').run(date, id);
+        // 1 foto por momento: trocar ou remover apaga a anterior primeiro.
+        if (newPhotoUrl || removePhoto) sqlite.prepare('DELETE FROM moment_photos WHERE moment_id=?').run(id);
+        if (newPhotoUrl) sqlite.prepare('INSERT INTO moment_photos (moment_id, url, position) VALUES (?, ?, 0)').run(id, newPhotoUrl);
+      });
+      tx();
+      const out = sqlite.prepare('SELECT * FROM moments WHERE id=?').get(id);
+      out.photos = sqlite.prepare('SELECT url FROM moment_photos WHERE moment_id=? ORDER BY position, id').all(id).map(p => p.url);
+      return out;
     },
     deleteMoment(coupleId, id) {
       const m = sqlite.prepare('SELECT 1 FROM moments WHERE id=? AND couple_id=?').get(id, coupleId);

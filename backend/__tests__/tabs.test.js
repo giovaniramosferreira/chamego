@@ -85,6 +85,8 @@ describe('Listas', () => {
   });
 });
 
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000050001', 'hex');
+
 describe('Momentos', () => {
   it('cria momento só com texto e lista', async () => {
     const cookie = await withCouple();
@@ -96,6 +98,43 @@ describe('Momentos', () => {
   it('rejeita momento vazio', async () => {
     const cookie = await withCouple();
     expect((await request(app).post('/api/moments').set('Cookie', cookie).field('text', '')).status).toBe(400);
+  });
+  it('guarda no máximo 1 foto e permite trocar/remover na edição', async () => {
+    const cookie = await withCouple();
+    const created = await request(app).post('/api/moments').set('Cookie', cookie)
+      .field('text', 'Passeio').attach('photo', PNG, 'a.png');
+    expect(created.status).toBe(200);
+    expect(created.body.moment.photos).toHaveLength(1);
+    const id = created.body.moment.id;
+
+    const swapped = await request(app).patch(`/api/moments/${id}`).set('Cookie', cookie).attach('photo', PNG, 'b.png');
+    expect(swapped.body.moment.photos).toHaveLength(1);
+    expect(swapped.body.moment.photos[0]).not.toBe(created.body.moment.photos[0]);
+
+    const edited = await request(app).patch(`/api/moments/${id}`).set('Cookie', cookie).field('text', 'Passeio no parque').field('removePhoto', 'true');
+    expect(edited.body.moment.text).toBe('Passeio no parque');
+    expect(edited.body.moment.photos).toHaveLength(0);
+  });
+  it('não edita momento de outro casal', async () => {
+    const a = await withCouple();
+    const m = await request(app).post('/api/moments').set('Cookie', a).field('text', 'Meu');
+    const b = await withCouple();
+    expect((await request(app).patch(`/api/moments/${m.body.moment.id}`).set('Cookie', b).field('text', 'hack')).status).toBe(404);
+  });
+});
+
+describe('Foto de perfil', () => {
+  it('faz upload do avatar e atualiza o usuário', async () => {
+    const cookie = await login('avatar@b.com');
+    const res = await request(app).post('/api/me/avatar').set('Cookie', cookie).attach('avatar', PNG, 'me.png');
+    expect(res.status).toBe(200);
+    expect(res.body.picture).toMatch(/^\/uploads\//);
+    const me = await request(app).get('/api/me').set('Cookie', cookie);
+    expect(me.body.user.picture).toBe(res.body.picture);
+  });
+  it('rejeita sem arquivo', async () => {
+    const cookie = await login('avatar2@b.com');
+    expect((await request(app).post('/api/me/avatar').set('Cookie', cookie)).status).toBe(400);
   });
 });
 

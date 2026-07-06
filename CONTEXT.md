@@ -40,14 +40,20 @@ personalizam o início. Persistido em `users.onboarding` (JSON).
 **Contador de Dias**:
 Dias desde a data-marco (`milestone_date`) do espaço — destaque do Início.
 
+**Foto de Perfil**:
+Avatar do usuário (`users.picture`) — vem do Google no login ou upload próprio
+via `POST /api/me/avatar` (multer, disco). Aparece no header do Início e em Config.
+
 **As 5 abas** (todas funcionais):
 - **Início**: saudação, contador de dias, próximo evento e nudge de check-in.
 - **Agenda**: eventos do casal (`events`) — título, data, hora, local, notas,
   compartilhado vs "só você". Visão de mês com marcadores + próximos eventos.
 - **Listas**: `lists` (compartilhada/individual/wishlist) + `list_items`
   (concluir, remover, barra de progresso).
-- **Momentos**: linha do tempo `moments` com texto e fotos (`moment_photos`,
-  upload via multer para `DATA_DIR/uploads`, servido em `/uploads`).
+- **Momentos**: linha do tempo `moments` com texto e **1 foto** por momento
+  (`moment_photos`, upload via multer para `DATA_DIR/uploads`, servido em
+  `/uploads`). Momento editável: trocar/remover foto e editar texto/data
+  (`PATCH /api/moments/:id`).
 - **Vocês**: check-in de humor diário (`checkins`, streak), metas do casal
   (`goals`), pergunta guiada da semana (rotativa) e chat privado (`messages`,
   atualiza por polling a cada 4s).

@@ -49,8 +49,8 @@ export default function InicioTab() {
       <div className="flex items-center justify-between pt-5 pb-2">
         <Logo className="text-xl" />
         <Link to="/app/config" aria-label="Configurações"
-          className="w-9 h-9 rounded-full bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent-line)] grid place-items-center text-accent-press font-semibold text-sm">
-          {firstName[0]?.toUpperCase() || '♥'}
+          className="w-9 h-9 rounded-full overflow-hidden bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent-line)] grid place-items-center text-accent-press font-semibold text-sm">
+          {user.picture ? <img src={user.picture} alt="" className="w-full h-full object-cover" /> : (firstName[0]?.toUpperCase() || '♥')}
         </Link>
       </div>
       <h1 className="font-display text-[1.7rem] leading-tight mb-1">

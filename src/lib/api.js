@@ -14,10 +14,10 @@ export async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
-// Upload multipart (fotos dos Momentos). Não define Content-Type: o browser
+// Upload multipart (fotos, avatar). Não define Content-Type: o browser
 // injeta o boundary do FormData automaticamente.
-export async function apiUpload(path, formData) {
-  const res = await fetch(path, { method: 'POST', body: formData });
+export async function apiUpload(path, formData, method = 'POST') {
+  const res = await fetch(path, { method, body: formData });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || 'Algo deu errado. Tente de novo.');
