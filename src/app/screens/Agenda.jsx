@@ -161,7 +161,6 @@ function EventCreate() {
 }
 
 function DatePlanner() {
-  const go = useGo();
   return (
     <div className="screen-scroll">
       <AppHeader back title="Date planner" />

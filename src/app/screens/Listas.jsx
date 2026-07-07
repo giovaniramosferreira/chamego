@@ -44,7 +44,6 @@ function ListasRoot() {
 }
 
 function ListDetail() {
-  const go = useGo();
   return (
     <>
       <div className="screen-scroll">
