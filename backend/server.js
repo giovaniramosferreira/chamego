@@ -357,6 +357,72 @@ app.post('/api/messages', withCouple, (req, res) => {
   res.json({ message: db.createMessage(req.couple.id, req.user.email, req.body.text.trim()) });
 });
 
+/* ── Backends do prototipo completo ─────────────────────────────────────── */
+app.get('/api/plans', withCouple, (req, res) => res.json({ plans: db.listPlans(req.couple.id) }));
+app.post('/api/plans', withCouple, (req, res) => {
+  if (!req.body?.title?.trim()) return res.status(400).json({ error: 'Dê um nome ao plano' });
+  res.json({ plan: db.createPlan(req.couple.id, req.user.email, req.body) });
+});
+app.patch('/api/plans/:id', withCouple, (req, res) => {
+  const plan = db.updatePlan(req.couple.id, Number(req.params.id), req.body || {});
+  if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
+  res.json({ plan });
+});
+app.patch('/api/plan-steps/:id', withCouple, (req, res) => {
+  const plan = db.updatePlanStep(req.couple.id, Number(req.params.id), req.body || {});
+  if (!plan) return res.status(404).json({ error: 'Etapa não encontrada' });
+  res.json({ plan });
+});
+
+app.get('/api/gifts', withCouple, (req, res) => res.json({ gifts: db.listGifts(req.couple.id) }));
+app.post('/api/gifts', withCouple, (req, res) => {
+  if (!req.body?.title?.trim()) return res.status(400).json({ error: 'Dê um nome à data ou presente' });
+  res.json({ gift: db.createGift(req.couple.id, req.user.email, req.body) });
+});
+
+app.get('/api/date-ideas', withCouple, (req, res) => res.json({ ideas: db.listDateIdeas(req.couple.id) }));
+app.post('/api/date-ideas/saved', withCouple, (req, res) => {
+  if (!req.body?.ideaId) return res.status(400).json({ error: 'Ideia ausente' });
+  res.json({ saved: db.saveDateIdea(req.couple.id, req.user.email, req.body.ideaId) });
+});
+
+app.get('/api/weekly-summary', withCouple, (req, res) => res.json({ summary: db.weeklySummary(req.couple.id) }));
+app.get('/api/reminders', withCouple, (req, res) => res.json({ reminders: db.listReminders(req.couple.id) }));
+app.get('/api/achievements', withCouple, (req, res) => res.json({ achievements: db.listAchievements(req.couple.id) }));
+
+app.get('/api/quizzes', withCouple, (req, res) => res.json({ quizzes: db.listQuizzes(req.couple.id, req.user.email) }));
+app.post('/api/quizzes/:id/answers', withCouple, (req, res) => {
+  const result = db.saveQuizAnswers(req.couple.id, req.user.email, req.params.id, req.body?.answers || []);
+  if (!result) return res.status(404).json({ error: 'Quiz não encontrado' });
+  res.json({ result });
+});
+
+app.get('/api/time-capsules', withCouple, (req, res) => res.json({ capsules: db.listTimeCapsules(req.couple.id) }));
+app.post('/api/time-capsules', withCouple, (req, res) => {
+  const { title, openDate } = req.body || {};
+  if (!title?.trim() || !isDate(openDate)) return res.status(400).json({ error: 'Informe título e data de abertura' });
+  res.json({ capsule: db.createTimeCapsule(req.couple.id, req.user.email, req.body) });
+});
+
+app.get('/api/albums', withCouple, (req, res) => res.json({ albums: db.listAlbums(req.couple.id) }));
+app.post('/api/albums', withCouple, (req, res) => {
+  if (!req.body?.title?.trim()) return res.status(400).json({ error: 'Dê um nome ao álbum' });
+  res.json({ album: db.createAlbum(req.couple.id, req.user.email, req.body) });
+});
+
+app.get('/api/intimacy/prompts', withCouple, (req, res) => res.json({ prompts: db.listIntimacyPrompts() }));
+app.post('/api/intimacy/sessions', withCouple, (req, res) => {
+  const session = db.createIntimacySession(req.couple.id, req.user.email, req.body || {});
+  if (!session) return res.status(404).json({ error: 'Pergunta guiada não encontrada' });
+  res.json({ session });
+});
+
+app.get('/api/subscription', withCouple, (req, res) => res.json({ subscription: db.getSubscription(req.couple.id) }));
+app.patch('/api/subscription', withCouple, (req, res) => {
+  const plan = req.body?.plan === 'premium' ? 'premium' : 'free';
+  res.json({ subscription: db.setSubscription(req.couple.id, plan) });
+});
+
 // SPA em produção
 const distDir = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {
