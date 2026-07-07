@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import I from './icons';
+import { NavigationProvider, screenPath } from './nav';
 import './app.css';
 
 import auth from './screens/Auth';
@@ -35,12 +36,12 @@ const TABS = [
   { id: 'voces', label: 'Vocês', icon: 'together' },
 ];
 
-function TabBar({ active, hidden }) {
+function TabBar({ active, hidden, basePath }) {
   const navigate = useNavigate();
   return (
     <div className={`tab-bar${hidden ? ' hidden' : ''}`}>
       {TABS.map(t => (
-        <div key={t.id} className={`tab-item${t.id === active ? ' active' : ''}`} style={{ cursor: 'pointer' }} onClick={() => navigate(`/prototipo/${t.id}-root`)}>
+        <div key={t.id} className={`tab-item${t.id === active ? ' active' : ''}`} style={{ cursor: 'pointer' }} onClick={() => navigate(screenPath(basePath, `${t.id}-root`))}>
           <I name={t.icon} size={22} />
           <span>{t.label}</span>
         </div>
@@ -49,22 +50,26 @@ function TabBar({ active, hidden }) {
   );
 }
 
-export default function ChamegoApp() {
-  const { screenId = 'splash' } = useParams();
-  const def = REGISTRY[screenId] || REGISTRY['splash'];
+export default function ChamegoApp({ basePath = '/prototipo', startScreen = 'splash', fallbackScreen = 'splash' }) {
+  const params = useParams();
+  const wildcardScreen = params['*']?.split('/').filter(Boolean)[0];
+  const screenId = params.screenId || wildcardScreen || startScreen;
+  const def = REGISTRY[screenId] || REGISTRY[fallbackScreen] || REGISTRY[startScreen];
   const Screen = def.component;
   return (
-    <div className="capp" data-palette="terracota">
-      <div className="capp-stage">
-        <div className="capp-frame">
-          <div className="screen-viewport">
-            <div className={`screen${def.hideTabs ? ' no-tabbar' : ''}`} key={screenId}>
-              <Screen />
+    <NavigationProvider basePath={basePath}>
+      <div className="capp" data-palette="terracota">
+        <div className="capp-stage">
+          <div className="capp-frame">
+            <div className="screen-viewport">
+              <div className={`screen${def.hideTabs ? ' no-tabbar' : ''}`} key={screenId}>
+                <Screen />
+              </div>
             </div>
+            <TabBar active={def.tab} hidden={!!def.hideTabs} basePath={basePath} />
           </div>
-          <TabBar active={def.tab} hidden={!!def.hideTabs} />
         </div>
       </div>
-    </div>
+    </NavigationProvider>
   );
 }

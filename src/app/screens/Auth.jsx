@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import I from '../icons';
 import { useGo } from '../nav';
-import { AppHeader, Choice, ProgressDots, Row, Tgl, Chk, Chev, EmptyState, Field, Chip } from '../ui';
+import { AppHeader, Choice, ProgressDots, Row, Tgl, Chk, EmptyState, Field, Chip } from '../ui';
 import abraco from '../../assets/app/abraco.png';
 
 function Splash() {

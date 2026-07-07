@@ -23,4 +23,10 @@ export default defineConfig([
     files: ['backend/**/*.js', 'run_e2e_test.js'],
     languageOptions: { globals: globals.node },
   },
+  {
+    files: ['src/app/**/*.{js,jsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])
