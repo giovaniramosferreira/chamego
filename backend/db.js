@@ -119,7 +119,114 @@ const SCHEMA = [
     text TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))
   )`,
+  `CREATE TABLE IF NOT EXISTS plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    title TEXT NOT NULL,
+    category TEXT DEFAULT '',
+    target_date TEXT DEFAULT '',
+    shared INTEGER NOT NULL DEFAULT 1,
+    done INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS plan_steps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plan_id INTEGER NOT NULL REFERENCES plans(id),
+    title TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE TABLE IF NOT EXISTS gifts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    title TEXT NOT NULL,
+    person TEXT DEFAULT '',
+    date TEXT DEFAULT '',
+    budget INTEGER DEFAULT 0,
+    ideas TEXT DEFAULT '[]',
+    done INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS saved_date_ideas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    idea_id TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (couple_id, idea_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS quiz_answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL,
+    quiz_id TEXT NOT NULL,
+    answers TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (couple_id, user_email, quiz_id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS time_capsules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT DEFAULT '',
+    open_date TEXT NOT NULL,
+    opened_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS albums (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    title TEXT NOT NULL,
+    moment_ids TEXT DEFAULT '[]',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS intimacy_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    created_by TEXT NOT NULL,
+    prompt_id TEXT NOT NULL,
+    note TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS subscriptions (
+    couple_id INTEGER PRIMARY KEY REFERENCES couples(id),
+    plan TEXT NOT NULL DEFAULT 'free',
+    entitlements TEXT DEFAULT '["free"]',
+    updated_at TEXT DEFAULT (datetime('now'))
+  )`,
 ];
+
+const DATE_IDEAS = [
+  { id: 'picnic-sunset', title: 'Piquenique ao por do sol', vibe: 'leve', budget: 'baixo', duration: '2h', checklist: ['Canga', 'Petiscos', 'Playlist'] },
+  { id: 'home-games', title: 'Noite de jogos em casa', vibe: 'divertido', budget: 'zero', duration: '3h', checklist: ['Jogo', 'Bebida', 'Celular longe'] },
+  { id: 'first-date', title: 'Reviver o primeiro encontro', vibe: 'nostalgia', budget: 'medio', duration: 'noite', checklist: ['Lugar especial', 'Foto antiga', 'Mensagem'] },
+];
+
+const QUIZZES = [
+  {
+    id: 'fim-de-semana',
+    title: 'Fim de semana perfeito',
+    questions: [
+      { id: 'q1', text: 'O que combina mais com a gente?', options: ['Casa e filme', 'Passeio ao ar livre', 'Restaurante novo'] },
+      { id: 'q2', text: 'Qual cuidado faz mais diferenca?', options: ['Mensagem carinhosa', 'Ajuda pratica', 'Tempo de qualidade'] },
+      { id: 'q3', text: 'Uma meta gostosa para este mes?', options: ['Um date', 'Uma viagem curta', 'Organizar a casa'] },
+    ],
+  },
+];
+
+const INTIMACY_PROMPTS = [
+  { id: 'gratidao', tone: 'carinho', text: 'Uma coisa pequena que voce fez e me deixou feliz foi...' },
+  { id: 'futuro', tone: 'futuro', text: 'Quando penso no nosso futuro, eu queria construir...' },
+  { id: 'apoio', tone: 'cuidado', text: 'Nesta semana, eu me sentiria apoiado(a) se...' },
+];
+
+function parseJson(value, fallback) {
+  try { return JSON.parse(value || ''); } catch { return fallback; }
+}
 
 export function createDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -414,6 +521,161 @@ export function createDb(file) {
     createMessage(coupleId, email, text) {
       const r = sqlite.prepare('INSERT INTO messages (couple_id, sender_email, text) VALUES (?, ?, ?)').run(coupleId, email, String(text).slice(0, 1000));
       return sqlite.prepare('SELECT * FROM messages WHERE id=?').get(r.lastInsertRowid);
+    },
+
+    /* ── Prototipo: planos, presentes, dates, conteudo guiado ── */
+    listPlans(coupleId) {
+      const plans = sqlite.prepare('SELECT * FROM plans WHERE couple_id=? ORDER BY done, created_at DESC').all(coupleId);
+      for (const p of plans) p.steps = sqlite.prepare('SELECT * FROM plan_steps WHERE plan_id=? ORDER BY position, id').all(p.id);
+      return plans;
+    },
+    getPlan(coupleId, id) {
+      const plan = sqlite.prepare('SELECT * FROM plans WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!plan) return null;
+      plan.steps = sqlite.prepare('SELECT * FROM plan_steps WHERE plan_id=? ORDER BY position, id').all(id);
+      return plan;
+    },
+    createPlan(coupleId, email, { title, category = '', targetDate = '', shared = true, steps = [] }) {
+      const tx = sqlite.transaction(() => {
+        const r = sqlite.prepare(`INSERT INTO plans (couple_id, created_by, title, category, target_date, shared)
+          VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(coupleId, email, String(title).slice(0, 120), String(category).slice(0, 40), String(targetDate).slice(0, 10), shared ? 1 : 0);
+        steps.slice(0, 20).forEach((step, i) => sqlite.prepare('INSERT INTO plan_steps (plan_id, title, position) VALUES (?, ?, ?)')
+          .run(r.lastInsertRowid, String(step).slice(0, 160), i));
+        return r.lastInsertRowid;
+      });
+      return this.getPlan(coupleId, tx());
+    },
+    updatePlan(coupleId, id, patch) {
+      const plan = this.getPlan(coupleId, id);
+      if (!plan) return null;
+      if (patch.title !== undefined) sqlite.prepare('UPDATE plans SET title=? WHERE id=?').run(String(patch.title).slice(0, 120), id);
+      if (patch.category !== undefined) sqlite.prepare('UPDATE plans SET category=? WHERE id=?').run(String(patch.category).slice(0, 40), id);
+      if (patch.targetDate !== undefined) sqlite.prepare('UPDATE plans SET target_date=? WHERE id=?').run(String(patch.targetDate).slice(0, 10), id);
+      if (patch.shared !== undefined) sqlite.prepare('UPDATE plans SET shared=? WHERE id=?').run(patch.shared ? 1 : 0, id);
+      if (patch.done !== undefined) sqlite.prepare('UPDATE plans SET done=? WHERE id=?').run(patch.done ? 1 : 0, id);
+      return this.getPlan(coupleId, id);
+    },
+    updatePlanStep(coupleId, stepId, { title, done }) {
+      const row = sqlite.prepare(`SELECT s.id, s.plan_id FROM plan_steps s
+        JOIN plans p ON p.id=s.plan_id WHERE s.id=? AND p.couple_id=?`).get(stepId, coupleId);
+      if (!row) return null;
+      if (title !== undefined) sqlite.prepare('UPDATE plan_steps SET title=? WHERE id=?').run(String(title).slice(0, 160), stepId);
+      if (done !== undefined) sqlite.prepare('UPDATE plan_steps SET done=? WHERE id=?').run(done ? 1 : 0, stepId);
+      return this.getPlan(coupleId, row.plan_id);
+    },
+
+    listGifts(coupleId) {
+      return sqlite.prepare('SELECT * FROM gifts WHERE couple_id=? ORDER BY date, created_at DESC').all(coupleId)
+        .map(g => ({ ...g, ideas: parseJson(g.ideas, []) }));
+    },
+    createGift(coupleId, email, { title, person = '', date = '', budget = 0, ideas = [] }) {
+      const r = sqlite.prepare(`INSERT INTO gifts (couple_id, created_by, title, person, date, budget, ideas)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .run(coupleId, email, String(title).slice(0, 120), String(person).slice(0, 80), String(date).slice(0, 10),
+          Number(budget) || 0, JSON.stringify(Array.isArray(ideas) ? ideas.slice(0, 20) : []));
+      return this.listGifts(coupleId).find(g => g.id === r.lastInsertRowid);
+    },
+
+    listDateIdeas(coupleId) {
+      const saved = new Set(sqlite.prepare('SELECT idea_id FROM saved_date_ideas WHERE couple_id=?').all(coupleId).map(r => r.idea_id));
+      return DATE_IDEAS.map(idea => ({ ...idea, saved: saved.has(idea.id) }));
+    },
+    saveDateIdea(coupleId, email, ideaId) {
+      sqlite.prepare(`INSERT INTO saved_date_ideas (couple_id, created_by, idea_id) VALUES (?, ?, ?)
+        ON CONFLICT(couple_id, idea_id) DO NOTHING`).run(coupleId, email, String(ideaId));
+      return sqlite.prepare('SELECT * FROM saved_date_ideas WHERE couple_id=? AND idea_id=?').get(coupleId, ideaId);
+    },
+
+    weeklySummary(coupleId) {
+      return {
+        eventsCount: sqlite.prepare('SELECT COUNT(*) c FROM events WHERE couple_id=?').get(coupleId).c,
+        listsCount: sqlite.prepare('SELECT COUNT(*) c FROM lists WHERE couple_id=?').get(coupleId).c,
+        momentsCount: sqlite.prepare('SELECT COUNT(*) c FROM moments WHERE couple_id=?').get(coupleId).c,
+        checkinsCount: sqlite.prepare('SELECT COUNT(*) c FROM checkins WHERE couple_id=?').get(coupleId).c,
+        activeGoals: this.activeGoalsCount(coupleId),
+      };
+    },
+    listReminders(coupleId) {
+      const summary = this.weeklySummary(coupleId);
+      const out = [];
+      if (!summary.checkinsCount) out.push({ id: 'checkin', icon: 'heart', title: 'Fazer check-in', action: 'checkin' });
+      if (!summary.eventsCount) out.push({ id: 'event', icon: 'calendar', title: 'Criar o proximo evento', action: 'event-create' });
+      if (summary.activeGoals > 0) out.push({ id: 'goal', icon: 'target', title: 'Retomar uma meta ativa', action: 'metas' });
+      if (!out.length) out.push({ id: 'care', icon: 'bell', title: 'Mandar um carinho hoje', action: 'chat' });
+      return out;
+    },
+    listAchievements(coupleId) {
+      const summary = this.weeklySummary(coupleId);
+      return [
+        { id: 'first-event', title: 'Primeiro evento', unlocked: summary.eventsCount > 0 },
+        { id: 'first-moment', title: 'Primeiro momento', unlocked: summary.momentsCount > 0 },
+        { id: 'first-checkin', title: 'Primeiro check-in', unlocked: summary.checkinsCount > 0 },
+        { id: 'planner', title: 'Vida a dois em movimento', unlocked: summary.activeGoals > 0 || summary.listsCount > 0 },
+      ];
+    },
+
+    listQuizzes(coupleId, email) {
+      return QUIZZES.map(q => {
+        const mine = sqlite.prepare('SELECT answers FROM quiz_answers WHERE couple_id=? AND user_email=? AND quiz_id=?').get(coupleId, email, q.id);
+        return { ...q, answered: !!mine };
+      });
+    },
+    saveQuizAnswers(coupleId, email, quizId, answers) {
+      const quiz = QUIZZES.find(q => q.id === quizId);
+      if (!quiz) return null;
+      sqlite.prepare(`INSERT INTO quiz_answers (couple_id, user_email, quiz_id, answers, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(couple_id, user_email, quiz_id) DO UPDATE SET answers=excluded.answers, updated_at=datetime('now')`)
+        .run(coupleId, email, quizId, JSON.stringify(Array.isArray(answers) ? answers : []));
+      const rows = sqlite.prepare('SELECT user_email, answers FROM quiz_answers WHERE couple_id=? AND quiz_id=?').all(coupleId, quizId);
+      return { quizId, myAnswers: answers.length, answeredBy: rows.length, answers: rows.map(r => ({ email: r.user_email, answers: parseJson(r.answers, []) })) };
+    },
+
+    listTimeCapsules(coupleId) {
+      return sqlite.prepare('SELECT * FROM time_capsules WHERE couple_id=? ORDER BY open_date, created_at DESC').all(coupleId);
+    },
+    createTimeCapsule(coupleId, email, { title, message = '', openDate }) {
+      const r = sqlite.prepare(`INSERT INTO time_capsules (couple_id, created_by, title, message, open_date)
+        VALUES (?, ?, ?, ?, ?)`)
+        .run(coupleId, email, String(title).slice(0, 120), String(message).slice(0, 2000), String(openDate).slice(0, 10));
+      return sqlite.prepare('SELECT * FROM time_capsules WHERE id=?').get(r.lastInsertRowid);
+    },
+
+    listAlbums(coupleId) {
+      return sqlite.prepare('SELECT * FROM albums WHERE couple_id=? ORDER BY created_at DESC').all(coupleId)
+        .map(a => ({ ...a, momentIds: parseJson(a.moment_ids, []) }));
+    },
+    createAlbum(coupleId, email, { title, momentIds }) {
+      const ids = Array.isArray(momentIds) && momentIds.length ? momentIds : this.listMoments(coupleId).map(m => m.id);
+      const r = sqlite.prepare('INSERT INTO albums (couple_id, created_by, title, moment_ids) VALUES (?, ?, ?, ?)')
+        .run(coupleId, email, String(title).slice(0, 120), JSON.stringify(ids.slice(0, 100)));
+      const album = this.listAlbums(coupleId).find(a => a.id === r.lastInsertRowid);
+      album.moments = this.listMoments(coupleId).filter(m => album.momentIds.includes(m.id));
+      return album;
+    },
+
+    listIntimacyPrompts() {
+      return INTIMACY_PROMPTS;
+    },
+    createIntimacySession(coupleId, email, { promptId, note = '' }) {
+      const prompt = INTIMACY_PROMPTS.find(p => p.id === promptId);
+      if (!prompt) return null;
+      const r = sqlite.prepare('INSERT INTO intimacy_sessions (couple_id, created_by, prompt_id, note) VALUES (?, ?, ?, ?)')
+        .run(coupleId, email, promptId, String(note).slice(0, 1000));
+      return sqlite.prepare('SELECT * FROM intimacy_sessions WHERE id=?').get(r.lastInsertRowid);
+    },
+    getSubscription(coupleId) {
+      const row = sqlite.prepare('SELECT * FROM subscriptions WHERE couple_id=?').get(coupleId);
+      if (row) return { ...row, entitlements: parseJson(row.entitlements, ['free']) };
+      return { couple_id: coupleId, plan: 'free', entitlements: ['free'] };
+    },
+    setSubscription(coupleId, plan = 'free') {
+      const entitlements = plan === 'premium' ? ['free', 'premium'] : ['free'];
+      sqlite.prepare(`INSERT INTO subscriptions (couple_id, plan, entitlements, updated_at) VALUES (?, ?, ?, datetime('now'))
+        ON CONFLICT(couple_id) DO UPDATE SET plan=excluded.plan, entitlements=excluded.entitlements, updated_at=datetime('now')`)
+        .run(coupleId, String(plan), JSON.stringify(entitlements));
+      return this.getSubscription(coupleId);
     },
   };
 }

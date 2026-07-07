@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import I from './icons';
 import { NavigationProvider, screenPath } from './nav';
+import { REAL_APP_REGISTRY } from './realScreens.jsx';
 import './app.css';
 
 import auth from './screens/Auth';
@@ -51,10 +52,11 @@ function TabBar({ active, hidden, basePath }) {
 }
 
 export default function ChamegoApp({ basePath = '/prototipo', startScreen = 'splash', fallbackScreen = 'splash' }) {
+  const registry = basePath === '/app' ? { ...REGISTRY, ...REAL_APP_REGISTRY } : REGISTRY;
   const params = useParams();
   const wildcardScreen = params['*']?.split('/').filter(Boolean)[0];
   const screenId = params.screenId || wildcardScreen || startScreen;
-  const def = REGISTRY[screenId] || REGISTRY[fallbackScreen] || REGISTRY[startScreen];
+  const def = registry[screenId] || registry[fallbackScreen] || registry[startScreen];
   const Screen = def.component;
   return (
     <NavigationProvider basePath={basePath}>
