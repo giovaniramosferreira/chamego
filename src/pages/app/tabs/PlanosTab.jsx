@@ -24,7 +24,11 @@ export default function PlanosTab() {
 
   return (
     <div>
-      <AppHeader back={() => nav('/app/listas')} title="Planos e sonhos" />
+      <AppHeader back={() => nav('/app/voces')} title="Planos & metas" />
+
+      <MetasSection />
+
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2 mt-4">Planos grandes</p>
 
       {plans === null ? (
         <div className="py-10 text-center"><Spinner /></div>
@@ -180,5 +184,53 @@ export function PlanoDetail() {
         </label>
       </div>
     </div>
+  );
+}
+
+// Metas rápidas do casal (fundidas aqui, vindas da antiga aba Vocês).
+function MetasSection() {
+  const [goals, setGoals] = useState(null);
+  const [title, setTitle] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api('/api/connection').then((d) => setGoals(d.goals || [])).catch(() => setGoals([]));
+  useEffect(() => { load(); }, []);
+
+  async function add(e) {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setBusy(true);
+    try { const { goal } = await api('/api/goals', { method: 'POST', body: { title: title.trim() } }); setGoals([goal, ...(goals || [])]); setTitle(''); }
+    finally { setBusy(false); }
+  }
+  async function toggle(g) {
+    const { goal } = await api(`/api/goals/${g.id}`, { method: 'PATCH', body: { done: !g.done } });
+    setGoals(goals.map((x) => (x.id === g.id ? goal : x)));
+  }
+  async function del(g) {
+    await api(`/api/goals/${g.id}`, { method: 'DELETE' });
+    setGoals(goals.filter((x) => x.id !== g.id));
+  }
+
+  return (
+    <>
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2 mt-1">Metas rápidas</p>
+      {goals !== null && goals.length > 0 && (
+        <Card className="!p-0 mb-2">
+          {goals.map((g) => (
+            <div key={g.id} className="flex items-center gap-3 px-4 py-3 border-b border-line last:border-0">
+              <button type="button" onClick={() => toggle(g)} aria-label="Concluir" className={`flex-none w-6 h-6 rounded-full grid place-items-center ${g.done ? 'bg-accent text-white' : 'shadow-[inset_0_0_0_1.5px_var(--line-2)]'}`}>{g.done ? <Icon name="check" size={14} /> : null}</button>
+              <span className={`flex-1 text-[.95rem] ${g.done ? 'line-through text-ink-3' : ''}`}>{g.title}</span>
+              <button type="button" onClick={() => del(g)} aria-label="Remover" className="text-ink-3 hover:text-accent-press p-1"><Icon name="close" size={15} /></button>
+            </div>
+          ))}
+        </Card>
+      )}
+      <form onSubmit={add} className="flex gap-2 mb-1">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Nova meta (ex.: viajar em dezembro)"
+          className="flex-1 rounded-btn bg-surface px-4 py-2.5 text-ink placeholder:text-ink-3 shadow-[inset_0_0_0_1px_var(--line-2)] focus:shadow-[inset_0_0_0_1.5px_var(--accent)] outline-none" />
+        <Btn type="submit" disabled={busy || !title.trim()} className="!px-4 !py-2.5">{busy ? <Spinner /> : <Icon name="plus" size={18} />}</Btn>
+      </form>
+    </>
   );
 }

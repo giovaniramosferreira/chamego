@@ -8,6 +8,7 @@ import Icon from '../../../ui/icons.jsx';
 const DOW = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const todayISO = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+const daysUntil = (iso) => Math.ceil((new Date(`${iso}T00:00:00`).getTime() - Date.now()) / 86_400_000);
 
 function monthGrid(year, month) {
   const first = new Date(year, month, 1).getDay();
@@ -56,8 +57,15 @@ export default function AgendaTab() {
   const [sheet, setSheet] = useState(null); // null | {} (new) | event (edit)
   const [saving, setSaving] = useState(false);
 
+  const [dates, setDates] = useState([]);
   const load = () => api('/api/events').then((d) => setEvents(d.events));
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const t = todayISO();
+    api('/api/gifts').then((d) => setDates(
+      (d.gifts || []).filter((g) => g.kind !== 'wishlist' && g.date && g.date >= t).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3)
+    )).catch(() => {});
+  }, []);
 
   const byDate = useMemo(() => {
     const map = {};
@@ -97,9 +105,19 @@ export default function AgendaTab() {
         <h1 className="font-display text-[1.9rem]">Agenda</h1>
       </div>
 
-      <Card className="!p-0 mb-4">
-        <Row icon="star" title="Ideias pra vocês" sub="Sugestões de date pra combinar" onClick={() => nav('/app/date-ideas')} />
-      </Card>
+      {dates.length > 0 && (
+        <>
+          <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Datas importantes</p>
+          <Card className="!p-0 mb-4">
+            {dates.map((g) => {
+              const d = daysUntil(g.date);
+              return <Row key={g.id} icon="gift" title={g.title} sub={new Date(`${g.date}T00:00:00`).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}
+                onClick={() => nav(`/app/presentes/${g.id}`)}
+                right={<span className="text-xs font-semibold text-accent-press bg-accent-soft rounded-full px-2.5 py-1">{d <= 0 ? 'hoje' : `${d}d`}</span>} />;
+            })}
+          </Card>
+        </>
+      )}
 
       <Card className="mb-5 !p-4">
         <div className="flex items-center justify-between mb-3">
