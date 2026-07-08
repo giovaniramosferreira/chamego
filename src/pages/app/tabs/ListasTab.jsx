@@ -40,6 +40,10 @@ export default function ListasTab() {
     <div>
       <h1 className="font-display text-[1.9rem] pt-6 pb-3">Listas</h1>
 
+      <Card className="!p-0 mb-4">
+        <Row icon="target" title="Planos e sonhos" sub="Metas grandes com etapas" onClick={() => nav('/app/planos')} />
+      </Card>
+
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-5 px-5 [scrollbar-width:none]">
         {FILTERS.map(([k, label]) => <Chip key={k} active={filter === k} onClick={() => setFilter(k)}>{label}</Chip>)}
       </div>

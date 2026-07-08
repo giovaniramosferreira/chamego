@@ -8,6 +8,10 @@ import ListaDetail from './tabs/ListaDetail.jsx';
 import MomentosTab from './tabs/MomentosTab.jsx';
 import VocesTab from './tabs/VocesTab.jsx';
 import ChatScreen from './tabs/ChatScreen.jsx';
+import PlanosTab, { PlanoDetail } from './tabs/PlanosTab.jsx';
+import PresentesTab, { PresenteDetail } from './tabs/PresentesTab.jsx';
+import QuizTab, { QuizPlay } from './tabs/QuizTab.jsx';
+import CapsulaTab, { CapsulaDetail } from './tabs/CapsulaTab.jsx';
 
 const TABS = [
   { path: '/app', icon: 'home', label: 'Início', end: true },
@@ -32,6 +36,14 @@ export default function AppShell() {
             <Route path="momentos" element={<MomentosTab />} />
             <Route path="voces" element={<VocesTab />} />
             <Route path="voces/chat" element={<ChatScreen />} />
+            <Route path="planos" element={<PlanosTab />} />
+            <Route path="planos/:id" element={<PlanoDetail />} />
+            <Route path="presentes" element={<PresentesTab />} />
+            <Route path="presentes/:id" element={<PresenteDetail />} />
+            <Route path="quiz" element={<QuizTab />} />
+            <Route path="quiz/:id" element={<QuizPlay />} />
+            <Route path="capsula" element={<CapsulaTab />} />
+            <Route path="capsula/:id" element={<CapsulaDetail />} />
             <Route path="config" element={<ConfigTab />} />
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>

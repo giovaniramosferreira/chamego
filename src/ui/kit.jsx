@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './icons.jsx';
 
@@ -41,7 +42,7 @@ export function Card({ className = '', children, ...props }) {
 export function Row({ icon, title, sub, right, onClick, className = '' }) {
   const Tag = onClick ? 'button' : 'div';
   return (
-    <Tag onClick={onClick} className={`w-full flex items-center gap-3.5 px-4 py-3.5 text-left bg-surface border-b border-line last:border-0 ${onClick ? 'hover:bg-accent-soft/40 transition-colors' : ''} ${className}`}>
+    <Tag {...(onClick ? { type: 'button' } : {})} onClick={onClick} className={`w-full flex items-center gap-3.5 px-4 py-3.5 text-left bg-surface border-b border-line last:border-0 ${onClick ? 'hover:bg-accent-soft/40 transition-colors' : ''} ${className}`}>
       {icon && <span className="flex-none w-9 h-9 rounded-full bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent-line)] grid place-items-center text-accent-press"><Icon name={icon} size={17} /></span>}
       <span className="flex-1 min-w-0">
         <span className="block font-medium text-[.95rem] text-ink">{title}</span>
@@ -58,7 +59,7 @@ export function RowList({ children, className = '' }) {
 
 export function Chip({ children, active = false, onClick, className = '' }) {
   return (
-    <button onClick={onClick} className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${active ? 'bg-accent-soft text-accent-press shadow-[inset_0_0_0_1px_var(--accent-line)]' : 'bg-surface text-ink-2 shadow-[inset_0_0_0_1px_var(--line-2)]'} ${className}`}>
+    <button type="button" onClick={onClick} className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${active ? 'bg-accent-soft text-accent-press shadow-[inset_0_0_0_1px_var(--accent-line)]' : 'bg-surface text-ink-2 shadow-[inset_0_0_0_1px_var(--line-2)]'} ${className}`}>
       {children}
     </button>
   );
@@ -66,7 +67,7 @@ export function Chip({ children, active = false, onClick, className = '' }) {
 
 export function ChoiceCard({ icon, title, sub, selected, onClick }) {
   return (
-    <button onClick={onClick} className={`w-full flex items-center gap-3.5 rounded-card px-4 py-4 mb-2.5 text-left bg-surface transition-all ${selected ? 'shadow-[inset_0_0_0_1.5px_var(--accent)]' : 'shadow-[inset_0_0_0_1px_var(--line-2)] hover:shadow-[inset_0_0_0_1px_var(--ink)]'}`}>
+    <button type="button" onClick={onClick} className={`w-full flex items-center gap-3.5 rounded-card px-4 py-4 mb-2.5 text-left bg-surface transition-all ${selected ? 'shadow-[inset_0_0_0_1.5px_var(--accent)]' : 'shadow-[inset_0_0_0_1px_var(--line-2)] hover:shadow-[inset_0_0_0_1px_var(--ink)]'}`}>
       <span className="flex-none w-9 h-9 rounded-full bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent-line)] grid place-items-center text-accent-press"><Icon name={icon} size={18} /></span>
       <span className="flex-1">
         <span className="block font-medium text-ink">{title}</span>
@@ -148,4 +149,32 @@ export function Fab({ onClick, label = 'Adicionar' }) {
 
 export function Spinner({ className = '' }) {
   return <span className={`inline-block w-5 h-5 rounded-full border-2 border-accent/30 border-t-accent animate-spin ${className}`} />;
+}
+
+// Paywall reutilizável: mostra benefícios e ativa o Premium do casal.
+// (Sem gateway de pagamento nesta fase — ativa via PATCH /api/subscription.)
+export function PaywallSheet({ title = 'Recurso Premium', perks = [], onClose, onActivate }) {
+  const [busy, setBusy] = useState(false);
+  async function activate() {
+    setBusy(true);
+    try { await onActivate?.(); onClose?.(); } finally { setBusy(false); }
+  }
+  return (
+    <Sheet title={title} onClose={onClose}>
+      <div className="flex flex-col items-center text-center mb-4">
+        <span className="w-14 h-14 rounded-full bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent-line)] grid place-items-center text-accent mb-3"><Icon name="lock" size={24} /></span>
+        <p className="text-ink-2 text-[.95rem] max-w-[32ch]">Libere o Premium do espaço de vocês e desbloqueie tudo.</p>
+      </div>
+      <div className="mb-5 space-y-2">
+        {perks.map((p, i) => (
+          <div key={i} className="flex items-center gap-2.5 text-[.95rem]">
+            <span className="flex-none w-6 h-6 rounded-full bg-accent-soft grid place-items-center text-accent-press"><Icon name="check" size={14} /></span>
+            <span>{p}</span>
+          </div>
+        ))}
+      </div>
+      <Btn block disabled={busy} onClick={activate}>{busy ? <Spinner /> : 'Ativar Premium'}</Btn>
+      <button onClick={onClose} className="w-full text-center text-sm text-ink-3 mt-3">Agora não</button>
+    </Sheet>
+  );
 }

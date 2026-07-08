@@ -49,17 +49,35 @@ via `POST /api/me/avatar` (multer, disco). Aparece no header do Início e em Con
 - **Agenda**: eventos do casal (`events`) — título, data, hora, local, notas,
   compartilhado vs "só você". Visão de mês com marcadores + próximos eventos.
 - **Listas**: `lists` (compartilhada/individual/wishlist) + `list_items`
-  (concluir, remover, barra de progresso).
+  (concluir, remover, barra de progresso). Ponto de entrada para **Planos**.
 - **Momentos**: linha do tempo `moments` com texto e **1 foto** por momento
   (`moment_photos`, upload via multer para `DATA_DIR/uploads`, servido em
   `/uploads`). Momento editável: trocar/remover foto e editar texto/data
-  (`PATCH /api/moments/:id`).
+  (`PATCH /api/moments/:id`). Ponto de entrada para **Cápsula do Tempo**.
 - **Vocês**: check-in de humor diário (`checkins`, streak), metas do casal
   (`goals`), pergunta guiada da semana (rotativa) e chat privado (`messages`,
-  atualiza por polling a cada 4s).
+  atualiza por polling a cada 4s). Pontos de entrada para **Presentes** e **Quiz**.
 
 Todo conteúdo é escopado pelo Espaço do Casal (derivado da sessão, nunca do
 cliente): endpoints usam o middleware `requireCouple`.
+
+## Features de conexão (F1 — portadas do protótipo Fable ao app original)
+
+Reaproveitam o design system e os componentes `ui/kit.jsx`; escopadas pelo
+Espaço do Casal. Tabelas: `plans`, `plan_steps`, `plan_attachments`, `gifts`,
+`quiz_answers`, `time_capsules`.
+
+- **Planos e sonhos** (`/app/planos`): objetivo grande com **Etapas** (checklist,
+  % de progresso), prazo, notas, anexos (imagem) e templates (frontend).
+- **Presentes & datas** (`/app/presentes`): Datas com contador + Wishlist. Ideias
+  estruturadas (`{text,done,cost}`), barra de orçamento e **Modo Surpresa**
+  (item `secret=1`, oculto do par até revelar).
+- **Quiz do casal** (`/app/quiz`): quizzes por tema; comparativo de sintonia
+  quando os dois respondem. Trilhas `premium` travadas por entitlement.
+- **Cápsula do Tempo** (`/app/capsula`): mensagem/foto/áudio selada até uma data
+  (conteúdo escondido no servidor até lá), com recorrência anual.
+- **Premium**: `subscriptions.entitlements` libera recursos; **sem gateway de
+  pagamento ainda** — ativação via `PATCH /api/subscription` (interruptor manual).
 
 ## Relationships
 

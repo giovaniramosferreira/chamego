@@ -227,13 +227,11 @@ function requireCouple(req, res, next) {
 }
 const withCouple = [requireAuth, requireCouple];
 
-// Trava premium: bloqueia se a subscription do casal não tem o entitlement. Use após withCouple.
-function requireEntitlement(name) {
-  return (req, res, next) => {
-    const sub = db.getSubscription(req.couple.id);
-    if (!sub.entitlements.includes(name)) return res.status(402).json({ error: 'Esse recurso é Premium', upgrade: true });
-    next();
-  };
+// Trava premium: bloqueia se a subscription do casal não tem o entitlement.
+// Reutilizável quando novas rotas premium chegarem (F2+). Hoje o quiz premium
+// faz a checagem inline por depender do quiz específico.
+function hasEntitlement(coupleId, name) {
+  return db.getSubscription(coupleId).entitlements.includes(name);
 }
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
@@ -452,10 +450,11 @@ app.get('/api/reminders', withCouple, (req, res) => res.json({ reminders: db.lis
 app.get('/api/achievements', withCouple, (req, res) => res.json({ achievements: db.listAchievements(req.couple.id) }));
 
 app.get('/api/quizzes', withCouple, (req, res) => res.json({ quizzes: db.listQuizzes(req.couple.id, req.user.email) }));
+app.get('/api/quizzes/:id/result', withCouple, (req, res) => res.json({ result: db.quizResult(req.couple.id, req.params.id) }));
 app.post('/api/quizzes/:id/answers', withCouple, (req, res) => {
   const quiz = db.getQuiz(req.params.id);
   if (!quiz) return res.status(404).json({ error: 'Quiz não encontrado' });
-  if (quiz.premium && !db.getSubscription(req.couple.id).entitlements.includes('premium')) {
+  if (quiz.premium && !hasEntitlement(req.couple.id, 'premium')) {
     return res.status(402).json({ error: 'Esse quiz é Premium', upgrade: true });
   }
   const result = db.saveQuizAnswers(req.couple.id, req.user.email, req.params.id, req.body?.answers || []);

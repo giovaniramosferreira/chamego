@@ -58,6 +58,12 @@ export default function VocesTab() {
         <Row icon="chat" title="Pergunta guiada da semana" sub={data?.question || '…'} onClick={() => setModal('question')} />
       </RowList>
 
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Descobrir</p>
+      <RowList className="mb-4">
+        <Row icon="gift" title="Presentes & datas" sub="Nunca mais esqueça uma data" onClick={() => nav('/app/presentes')} />
+        <Row icon="heart" title="Quiz do casal" sub="Vejam o quanto combinam" onClick={() => nav('/app/quiz')} />
+      </RowList>
+
       {partner && data?.partnerCheckin && (
         <Card className="flex items-center gap-3">
           <span className="text-2xl">{MOODS.find((m) => m[1] === data.partnerCheckin.mood)?.[0] || '💛'}</span>

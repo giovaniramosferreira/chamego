@@ -784,6 +784,10 @@ export function createDb(file) {
       const rows = sqlite.prepare('SELECT user_email, answers FROM quiz_answers WHERE couple_id=? AND quiz_id=?').all(coupleId, quizId);
       return { quizId, myAnswers: answers.length, answeredBy: rows.length, answers: rows.map(r => ({ email: r.user_email, answers: parseJson(r.answers, []) })) };
     },
+    quizResult(coupleId, quizId) {
+      const rows = sqlite.prepare('SELECT user_email, answers FROM quiz_answers WHERE couple_id=? AND quiz_id=?').all(coupleId, quizId);
+      return { quizId, answeredBy: rows.length, answers: rows.map(r => ({ email: r.user_email, answers: parseJson(r.answers, []) })) };
+    },
 
     listTimeCapsules(coupleId) {
       return sqlite.prepare('SELECT * FROM time_capsules WHERE couple_id=? ORDER BY open_date, created_at DESC').all(coupleId)

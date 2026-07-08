@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, apiUpload } from '../../../lib/api.js';
-import { Sheet, Fab, Field, Btn, Spinner, EmptyState } from '../../../ui/kit.jsx';
+import { Card, Row, Sheet, Fab, Field, Btn, Spinner, EmptyState } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 const todayISO = () => new Date().toLocaleDateString('en-CA');
@@ -10,6 +11,7 @@ function fmt(iso) {
 }
 
 export default function MomentosTab() {
+  const nav = useNavigate();
   const [moments, setMoments] = useState(null);
   const [sheet, setSheet] = useState(null); // null | 'new' | moment
 
@@ -25,6 +27,10 @@ export default function MomentosTab() {
   return (
     <div>
       <h1 className="font-display text-[1.9rem] pt-6 pb-3">Momentos</h1>
+
+      <Card className="!p-0 mb-4">
+        <Row icon="clock" title="Cápsula do tempo" sub="Guarde mensagens pro futuro" onClick={() => nav('/app/capsula')} />
+      </Card>
 
       {moments === null ? (
         <div className="py-10 text-center"><Spinner /></div>
