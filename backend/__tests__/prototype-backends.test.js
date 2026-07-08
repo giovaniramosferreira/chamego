@@ -53,7 +53,10 @@ describe('backends do prototipo', () => {
       budget: 200,
     });
     expect(res.status).toBe(200);
-    expect(res.body.gift.ideas).toEqual(['Livro', 'Jantar']);
+    expect(res.body.gift.ideas).toEqual([
+      { text: 'Livro', done: false, cost: 0 },
+      { text: 'Jantar', done: false, cost: 0 },
+    ]);
 
     const list = await request(app).get('/api/gifts').set('Cookie', cookie);
     expect(list.body.gifts[0].title).toBe('Aniversario');
@@ -132,5 +135,110 @@ describe('backends do prototipo', () => {
     const upgraded = await request(app).patch('/api/subscription').set('Cookie', cookie).send({ plan: 'premium' });
     expect(upgraded.body.subscription.plan).toBe('premium');
     expect(upgraded.body.subscription.entitlements).toContain('premium');
+  });
+});
+
+// Cria um casal com os dois membros (criador + parceiro) via convite.
+async function coupleWithPartner() {
+  const a = await login(`ca${seq++}@b.com`);
+  const created = await request(app).post('/api/couples').set('Cookie', a).send({ name: 'Dois', milestoneDate: '2024-01-01' });
+  const coupleId = created.body.couple.id;
+  const inv = await request(app).post(`/api/couples/${coupleId}/invites`).set('Cookie', a);
+  const code = inv.body.invite.code;
+  const b = await login(`cb${seq++}@b.com`);
+  await request(app).post(`/api/invites/${code}/accept`).set('Cookie', b);
+  return { a, b };
+}
+
+describe('F1 — planos, presentes, quiz, capsula (completo)', () => {
+  it('planos: adiciona/remove etapa, notas e delete', async () => {
+    const cookie = await withCouple();
+    const plan = (await request(app).post('/api/plans').set('Cookie', cookie).send({ title: 'Morar juntos', steps: ['Achar apê'] })).body.plan;
+    expect(plan.steps).toHaveLength(1);
+
+    const added = await request(app).post(`/api/plans/${plan.id}/steps`).set('Cookie', cookie).send({ title: 'Comprar móveis' });
+    expect(added.body.plan.steps).toHaveLength(2);
+
+    const withNotes = await request(app).patch(`/api/plans/${plan.id}`).set('Cookie', cookie).send({ notes: 'Meta: dezembro' });
+    expect(withNotes.body.plan.notes).toBe('Meta: dezembro');
+
+    const detail = await request(app).get(`/api/plans/${plan.id}`).set('Cookie', cookie);
+    expect(detail.body.plan.attachments).toEqual([]);
+
+    const delStep = await request(app).delete(`/api/plan-steps/${added.body.plan.steps[1].id}`).set('Cookie', cookie);
+    expect(delStep.body.plan.steps).toHaveLength(1);
+
+    expect((await request(app).delete(`/api/plans/${plan.id}`).set('Cookie', cookie)).status).toBe(200);
+    expect((await request(app).get('/api/plans').set('Cookie', cookie)).body.plans).toHaveLength(0);
+  });
+
+  it('presentes: toggle de ideia, delete e modo surpresa escondido do par', async () => {
+    const { a, b } = await coupleWithPartner();
+    const gift = (await request(app).post('/api/gifts').set('Cookie', a).send({
+      title: 'Presente do par', secret: true, ideas: ['Relógio'], budget: 500,
+    })).body.gift;
+    expect(gift.secret).toBe(1);
+
+    // criador vê; parceiro não
+    expect((await request(app).get('/api/gifts').set('Cookie', a)).body.gifts).toHaveLength(1);
+    expect((await request(app).get('/api/gifts').set('Cookie', b)).body.gifts).toHaveLength(0);
+    expect((await request(app).get(`/api/gifts/${gift.id}`).set('Cookie', b)).status).toBe(404);
+
+    const toggled = await request(app).patch(`/api/gifts/${gift.id}`).set('Cookie', a).send({
+      ideas: [{ text: 'Relógio', done: true, cost: 450 }],
+    });
+    expect(toggled.body.gift.ideas[0].done).toBe(true);
+    expect(toggled.body.gift.ideas[0].cost).toBe(450);
+
+    expect((await request(app).delete(`/api/gifts/${gift.id}`).set('Cookie', a)).status).toBe(200);
+  });
+
+  it('quiz: bloqueia premium sem assinatura e libera após upgrade', async () => {
+    const cookie = await withCouple();
+    const premiumQuiz = (await request(app).get('/api/quizzes').set('Cookie', cookie)).body.quizzes.find((q) => q.premium);
+    expect(premiumQuiz).toBeTruthy();
+
+    const answers = premiumQuiz.questions.map((q) => ({ questionId: q.id, option: q.options[0] }));
+    const blocked = await request(app).post(`/api/quizzes/${premiumQuiz.id}/answers`).set('Cookie', cookie).send({ answers });
+    expect(blocked.status).toBe(402);
+    expect(blocked.body.upgrade).toBe(true);
+
+    await request(app).patch('/api/subscription').set('Cookie', cookie).send({ plan: 'premium' });
+    const ok = await request(app).post(`/api/quizzes/${premiumQuiz.id}/answers`).set('Cookie', cookie).send({ answers });
+    expect(ok.status).toBe(200);
+  });
+
+  it('quiz: comparativo aparece quando os dois respondem', async () => {
+    const { a, b } = await coupleWithPartner();
+    const quiz = (await request(app).get('/api/quizzes').set('Cookie', a)).body.quizzes.find((q) => !q.premium);
+    const ans = quiz.questions.map((q) => ({ questionId: q.id, option: q.options[0] }));
+    await request(app).post(`/api/quizzes/${quiz.id}/answers`).set('Cookie', a).send({ answers: ans });
+    const res = await request(app).post(`/api/quizzes/${quiz.id}/answers`).set('Cookie', b).send({ answers: ans });
+    expect(res.body.result.answeredBy).toBe(2);
+    const list = await request(app).get('/api/quizzes').set('Cookie', a);
+    expect(list.body.quizzes.find((q) => q.id === quiz.id).partnerAnswered).toBe(true);
+  });
+
+  it('capsula: selada esconde mensagem; abre só na data e persiste', async () => {
+    const cookie = await withCouple();
+    const sealed = (await request(app).post('/api/time-capsules').set('Cookie', cookie).send({
+      title: 'Futuro', message: 'segredo', openDate: '2099-12-31',
+    })).body.capsule;
+    expect(sealed.sealed).toBe(true);
+    expect(sealed.message).toBe('');
+
+    // tentar abrir antes da data → 409
+    const early = await request(app).patch(`/api/time-capsules/${sealed.id}`).set('Cookie', cookie);
+    expect(early.status).toBe(409);
+
+    // cápsula com data passada abre e revela
+    const ready = (await request(app).post('/api/time-capsules').set('Cookie', cookie).send({
+      title: 'Ontem', message: 'ola futuro', openDate: '2020-01-01',
+    })).body.capsule;
+    expect(ready.sealed).toBe(false);
+    expect(ready.message).toBe('ola futuro');
+    const opened = await request(app).patch(`/api/time-capsules/${ready.id}`).set('Cookie', cookie);
+    expect(opened.status).toBe(200);
+    expect(opened.body.capsule.opened_at).toBeTruthy();
   });
 });

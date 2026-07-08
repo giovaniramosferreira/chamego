@@ -15,16 +15,23 @@ const PORT = process.env.PORT || 3001;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+const uploadStorage = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = (path.extname(file.originalname) || '.jpg').toLowerCase().slice(0, 5);
+    cb(null, `${crypto.randomBytes(12).toString('hex')}${ext}`);
+  },
+});
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOADS_DIR,
-    filename: (req, file, cb) => {
-      const ext = (path.extname(file.originalname) || '.jpg').toLowerCase().slice(0, 5);
-      cb(null, `${crypto.randomBytes(12).toString('hex')}${ext}`);
-    },
-  }),
+  storage: uploadStorage,
   limits: { fileSize: 8 * 1024 * 1024, files: 6 },
   fileFilter: (req, file, cb) => cb(null, /^image\//.test(file.mimetype)),
+});
+// Cápsulas: imagem ou áudio, até 25MB (áudio pesa mais).
+const uploadMedia = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => cb(null, /^(image|audio)\//.test(file.mimetype)),
 });
 
 app.use(express.json());
@@ -220,6 +227,15 @@ function requireCouple(req, res, next) {
 }
 const withCouple = [requireAuth, requireCouple];
 
+// Trava premium: bloqueia se a subscription do casal não tem o entitlement. Use após withCouple.
+function requireEntitlement(name) {
+  return (req, res, next) => {
+    const sub = db.getSubscription(req.couple.id);
+    if (!sub.entitlements.includes(name)) return res.status(402).json({ error: 'Esse recurso é Premium', upgrade: true });
+    next();
+  };
+}
+
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
 const isTime = (v) => v === '' || v === undefined || /^\d{2}:\d{2}$/.test(v);
 
@@ -359,6 +375,11 @@ app.post('/api/messages', withCouple, (req, res) => {
 
 /* ── Backends do prototipo completo ─────────────────────────────────────── */
 app.get('/api/plans', withCouple, (req, res) => res.json({ plans: db.listPlans(req.couple.id) }));
+app.get('/api/plans/:id', withCouple, (req, res) => {
+  const plan = db.getPlan(req.couple.id, Number(req.params.id));
+  if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
+  res.json({ plan });
+});
 app.post('/api/plans', withCouple, (req, res) => {
   if (!req.body?.title?.trim()) return res.status(400).json({ error: 'Dê um nome ao plano' });
   res.json({ plan: db.createPlan(req.couple.id, req.user.email, req.body) });
@@ -368,16 +389,56 @@ app.patch('/api/plans/:id', withCouple, (req, res) => {
   if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
   res.json({ plan });
 });
+app.delete('/api/plans/:id', withCouple, (req, res) => {
+  if (!db.deletePlan(req.couple.id, Number(req.params.id))) return res.status(404).json({ error: 'Plano não encontrado' });
+  res.json({ ok: true });
+});
+app.post('/api/plans/:id/steps', withCouple, (req, res) => {
+  if (!req.body?.title?.trim()) return res.status(400).json({ error: 'Descreva a etapa' });
+  const plan = db.addPlanStep(req.couple.id, Number(req.params.id), req.body.title.trim());
+  if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
+  res.json({ plan });
+});
+app.post('/api/plans/:id/attachments', requireAuth, requireCouple, upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Envie uma imagem' });
+  const plan = db.addPlanAttachment(req.couple.id, Number(req.params.id), `/uploads/${req.file.filename}`);
+  if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
+  res.json({ plan });
+});
+app.delete('/api/plan-attachments/:id', withCouple, (req, res) => {
+  const plan = db.deletePlanAttachment(req.couple.id, Number(req.params.id));
+  if (!plan) return res.status(404).json({ error: 'Anexo não encontrado' });
+  res.json({ plan });
+});
 app.patch('/api/plan-steps/:id', withCouple, (req, res) => {
   const plan = db.updatePlanStep(req.couple.id, Number(req.params.id), req.body || {});
   if (!plan) return res.status(404).json({ error: 'Etapa não encontrada' });
   res.json({ plan });
 });
+app.delete('/api/plan-steps/:id', withCouple, (req, res) => {
+  const plan = db.deletePlanStep(req.couple.id, Number(req.params.id));
+  if (!plan) return res.status(404).json({ error: 'Etapa não encontrada' });
+  res.json({ plan });
+});
 
-app.get('/api/gifts', withCouple, (req, res) => res.json({ gifts: db.listGifts(req.couple.id) }));
+app.get('/api/gifts', withCouple, (req, res) => res.json({ gifts: db.listGifts(req.couple.id, req.user.email) }));
+app.get('/api/gifts/:id', withCouple, (req, res) => {
+  const gift = db.getGift(req.couple.id, Number(req.params.id), req.user.email);
+  if (!gift) return res.status(404).json({ error: 'Não encontrado' });
+  res.json({ gift });
+});
 app.post('/api/gifts', withCouple, (req, res) => {
   if (!req.body?.title?.trim()) return res.status(400).json({ error: 'Dê um nome à data ou presente' });
   res.json({ gift: db.createGift(req.couple.id, req.user.email, req.body) });
+});
+app.patch('/api/gifts/:id', withCouple, (req, res) => {
+  const gift = db.updateGift(req.couple.id, Number(req.params.id), req.body || {});
+  if (!gift) return res.status(404).json({ error: 'Não encontrado' });
+  res.json({ gift });
+});
+app.delete('/api/gifts/:id', withCouple, (req, res) => {
+  if (!db.deleteGift(req.couple.id, Number(req.params.id))) return res.status(404).json({ error: 'Não encontrado' });
+  res.json({ ok: true });
 });
 
 app.get('/api/date-ideas', withCouple, (req, res) => res.json({ ideas: db.listDateIdeas(req.couple.id) }));
@@ -392,16 +453,35 @@ app.get('/api/achievements', withCouple, (req, res) => res.json({ achievements: 
 
 app.get('/api/quizzes', withCouple, (req, res) => res.json({ quizzes: db.listQuizzes(req.couple.id, req.user.email) }));
 app.post('/api/quizzes/:id/answers', withCouple, (req, res) => {
+  const quiz = db.getQuiz(req.params.id);
+  if (!quiz) return res.status(404).json({ error: 'Quiz não encontrado' });
+  if (quiz.premium && !db.getSubscription(req.couple.id).entitlements.includes('premium')) {
+    return res.status(402).json({ error: 'Esse quiz é Premium', upgrade: true });
+  }
   const result = db.saveQuizAnswers(req.couple.id, req.user.email, req.params.id, req.body?.answers || []);
   if (!result) return res.status(404).json({ error: 'Quiz não encontrado' });
   res.json({ result });
 });
 
 app.get('/api/time-capsules', withCouple, (req, res) => res.json({ capsules: db.listTimeCapsules(req.couple.id) }));
-app.post('/api/time-capsules', withCouple, (req, res) => {
-  const { title, openDate } = req.body || {};
+app.get('/api/time-capsules/:id', withCouple, (req, res) => {
+  const capsule = db.getTimeCapsule(req.couple.id, Number(req.params.id));
+  if (!capsule) return res.status(404).json({ error: 'Cápsula não encontrada' });
+  res.json({ capsule });
+});
+app.post('/api/time-capsules', requireAuth, requireCouple, uploadMedia.single('media'), (req, res) => {
+  const { title, openDate, message, recurrence, scope } = req.body || {};
   if (!title?.trim() || !isDate(openDate)) return res.status(400).json({ error: 'Informe título e data de abertura' });
-  res.json({ capsule: db.createTimeCapsule(req.couple.id, req.user.email, req.body) });
+  const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null;
+  const mediaType = req.file ? (/^audio\//.test(req.file.mimetype) ? 'audio' : 'photo') : null;
+  res.json({ capsule: db.createTimeCapsule(req.couple.id, req.user.email, { title, openDate, message, recurrence, scope, mediaUrl, mediaType }) });
+});
+// Abrir cápsula (marca opened_at, só quando chegou a data).
+app.patch('/api/time-capsules/:id', withCouple, (req, res) => {
+  const result = db.openTimeCapsule(req.couple.id, Number(req.params.id));
+  if (!result) return res.status(404).json({ error: 'Cápsula não encontrada' });
+  if (result.error === 'sealed') return res.status(409).json({ error: 'Ainda selada até a data' });
+  res.json({ capsule: result });
 });
 
 app.get('/api/albums', withCouple, (req, res) => res.json({ albums: db.listAlbums(req.couple.id) }));
