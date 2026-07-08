@@ -5,6 +5,7 @@ import LandingPage from './pages/LandingPage.jsx';
 import EntrarPage from './pages/EntrarPage.jsx';
 import ConvitePage from './pages/ConvitePage.jsx';
 import ComecarFlow from './pages/app/ComecarFlow.jsx';
+import AppShell from './pages/app/AppShell.jsx';
 import ChamegoApp from './app/ChamegoApp.jsx';
 
 function RequireAuth({ children }) {
@@ -32,7 +33,7 @@ export default function App() {
           <Route path="/entrar" element={<EntrarPage />} />
           <Route path="/convite/:code" element={<ConvitePage />} />
           <Route path="/app/comecar/*" element={<RequireAuth><ComecarFlow /></RequireAuth>} />
-          <Route path="/app/*" element={<RequireAuth><RequireReady><ChamegoApp basePath="/app" startScreen="home-root" fallbackScreen="home-root" /></RequireReady></RequireAuth>} />
+          <Route path="/app/*" element={<RequireAuth><RequireReady><AppShell /></RequireReady></RequireAuth>} />
           {/* Protótipo navegável do handoff Claude Design (dados mock, sem auth) */}
           <Route path="/prototipo" element={<ChamegoApp />} />
           <Route path="/prototipo/:screenId" element={<ChamegoApp />} />
