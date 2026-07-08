@@ -16,6 +16,8 @@ import ConquistasTab from './tabs/ConquistasTab.jsx';
 import LembretesTab from './tabs/LembretesTab.jsx';
 import ResumoTab from './tabs/ResumoTab.jsx';
 import IntimidadeTab from './tabs/IntimidadeTab.jsx';
+import AlbunsTab, { AlbumDetail } from './tabs/AlbunsTab.jsx';
+import DateIdeasTab, { DateIdeaDetail } from './tabs/DateIdeasTab.jsx';
 
 const TABS = [
   { path: '/app', icon: 'home', label: 'Início', end: true },
@@ -52,6 +54,10 @@ export default function AppShell() {
             <Route path="lembretes" element={<LembretesTab />} />
             <Route path="resumo" element={<ResumoTab />} />
             <Route path="intimidade" element={<IntimidadeTab />} />
+            <Route path="albuns" element={<AlbunsTab />} />
+            <Route path="albuns/:id" element={<AlbumDetail />} />
+            <Route path="date-ideas" element={<DateIdeasTab />} />
+            <Route path="date-ideas/:id" element={<DateIdeaDetail />} />
             <Route path="config" element={<ConfigTab />} />
             <Route path="*" element={<Navigate to="/app" replace />} />
           </Routes>

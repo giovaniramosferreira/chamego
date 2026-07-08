@@ -93,6 +93,16 @@ Espaço do Casal. Tabelas: `plans`, `plan_steps`, `plan_attachments`, `gifts`,
   a resposta do par à mesma carta; histórico apagável; tons premium travados;
   trava opcional por **PIN** (`couples.intimacy_pin`, verificado no servidor).
 
+### F3
+
+- **Álbuns** (`/app/albuns`, entra por Momentos): agrupa fotos dos Momentos reais;
+  capa = 1ª foto; título + legenda (`albums.caption`), seleção de momentos, editar
+  e excluir. Retrospectiva premium → Paywall.
+- **Ideias de date** (`/app/date-ideas`, entra por Agenda): catálogo de ideias
+  (`DATE_IDEAS`) com filtros (orçamento/onde) no client; salvar/dessalvar
+  (`saved_date_ideas`, escopo do casal — "par curtiu" = a linha ter o email do
+  par); detalhe com checklist → agenda. Packs premium → Paywall.
+
 ## Relationships
 
 - Um usuário (email) pertence a no máximo um **Espaço do Casal** (`couple_members.user_email UNIQUE`)

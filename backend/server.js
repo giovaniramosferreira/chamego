@@ -439,10 +439,16 @@ app.delete('/api/gifts/:id', withCouple, (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/date-ideas', withCouple, (req, res) => res.json({ ideas: db.listDateIdeas(req.couple.id) }));
+app.get('/api/date-ideas', withCouple, (req, res) => res.json({ ideas: db.listDateIdeas(req.couple.id, req.user.email) }));
 app.post('/api/date-ideas/saved', withCouple, (req, res) => {
   if (!req.body?.ideaId) return res.status(400).json({ error: 'Ideia ausente' });
-  res.json({ saved: db.saveDateIdea(req.couple.id, req.user.email, req.body.ideaId) });
+  const saved = db.saveDateIdea(req.couple.id, req.user.email, req.body.ideaId);
+  if (!saved) return res.status(404).json({ error: 'Ideia não encontrada' });
+  res.json({ saved });
+});
+app.delete('/api/date-ideas/saved/:ideaId', withCouple, (req, res) => {
+  db.unsaveDateIdea(req.couple.id, req.params.ideaId);
+  res.json({ ok: true });
 });
 
 app.get('/api/weekly-summary', withCouple, (req, res) => res.json({ summary: db.weeklySummary(req.couple.id) }));
@@ -487,9 +493,23 @@ app.patch('/api/time-capsules/:id', withCouple, (req, res) => {
 });
 
 app.get('/api/albums', withCouple, (req, res) => res.json({ albums: db.listAlbums(req.couple.id) }));
+app.get('/api/albums/:id', withCouple, (req, res) => {
+  const album = db.getAlbum(req.couple.id, Number(req.params.id));
+  if (!album) return res.status(404).json({ error: 'Álbum não encontrado' });
+  res.json({ album });
+});
 app.post('/api/albums', withCouple, (req, res) => {
   if (!req.body?.title?.trim()) return res.status(400).json({ error: 'Dê um nome ao álbum' });
   res.json({ album: db.createAlbum(req.couple.id, req.user.email, req.body) });
+});
+app.patch('/api/albums/:id', withCouple, (req, res) => {
+  const album = db.updateAlbum(req.couple.id, Number(req.params.id), req.body || {});
+  if (!album) return res.status(404).json({ error: 'Álbum não encontrado' });
+  res.json({ album });
+});
+app.delete('/api/albums/:id', withCouple, (req, res) => {
+  if (!db.deleteAlbum(req.couple.id, Number(req.params.id))) return res.status(404).json({ error: 'Álbum não encontrado' });
+  res.json({ ok: true });
 });
 
 app.get('/api/intimacy/prompts', withCouple, (req, res) => res.json({ prompts: db.listIntimacyPrompts(), hasPin: db.intimacyHasPin(req.couple.id) }));

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
 import { useSession } from '../../../lib/session-context.js';
-import { Card, Sheet, Fab, Field, Btn, Chip, Spinner, EmptyState } from '../../../ui/kit.jsx';
+import { Card, Row, Sheet, Fab, Field, Btn, Chip, Spinner, EmptyState } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 const DOW = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
@@ -47,6 +48,7 @@ function EventForm({ initial, onSave, onClose, saving }) {
 }
 
 export default function AgendaTab() {
+  const nav = useNavigate();
   const { user } = useSession();
   const [events, setEvents] = useState(null);
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
@@ -94,6 +96,10 @@ export default function AgendaTab() {
       <div className="flex items-end justify-between pt-6 pb-3">
         <h1 className="font-display text-[1.9rem]">Agenda</h1>
       </div>
+
+      <Card className="!p-0 mb-4">
+        <Row icon="star" title="Ideias pra vocês" sub="Sugestões de date pra combinar" onClick={() => nav('/app/date-ideas')} />
+      </Card>
 
       <Card className="mb-5 !p-4">
         <div className="flex items-center justify-between mb-3">

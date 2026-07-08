@@ -29,6 +29,7 @@ export default function MomentosTab() {
       <h1 className="font-display text-[1.9rem] pt-6 pb-3">Momentos</h1>
 
       <Card className="!p-0 mb-4">
+        <Row icon="image" title="Álbuns" sub="Junte as fotos de vocês" onClick={() => nav('/app/albuns')} />
         <Row icon="clock" title="Cápsula do tempo" sub="Guarde mensagens pro futuro" onClick={() => nav('/app/capsula')} />
       </Card>
 

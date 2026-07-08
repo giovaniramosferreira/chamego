@@ -207,9 +207,14 @@ const SCHEMA = [
 ];
 
 const DATE_IDEAS = [
-  { id: 'picnic-sunset', title: 'Piquenique ao por do sol', vibe: 'leve', budget: 'baixo', duration: '2h', checklist: ['Canga', 'Petiscos', 'Playlist'] },
-  { id: 'home-games', title: 'Noite de jogos em casa', vibe: 'divertido', budget: 'zero', duration: '3h', checklist: ['Jogo', 'Bebida', 'Celular longe'] },
-  { id: 'first-date', title: 'Reviver o primeiro encontro', vibe: 'nostalgia', budget: 'medio', duration: 'noite', checklist: ['Lugar especial', 'Foto antiga', 'Mensagem'] },
+  { id: 'picnic-sunset', title: 'Piquenique ao pôr do sol', vibe: 'romantico', budget: 'baixo', duration: '2-3h', where: 'fora', premium: false, desc: 'Uma cesta simples, um bom lugar e o fim de tarde. Baixa produção, alto retorno.', checklist: ['Canga ou toalha', 'Petiscos e uma bebida', 'Playlist pronta'] },
+  { id: 'home-games', title: 'Noite de jogos em casa', vibe: 'animado', budget: 'zero', duration: '2-3h', where: 'casa', premium: false, desc: 'Jogo de tabuleiro ou videogame, sem celular, muita risada.', checklist: ['Escolher o jogo', 'Bebida ou petisco', 'Celular longe'] },
+  { id: 'first-date', title: 'Reviver o primeiro encontro', vibe: 'romantico', budget: 'medio', duration: 'dia', where: 'fora', premium: false, desc: 'Voltar ao lugar (ou recriar) o primeiro date de vocês.', checklist: ['Lugar especial', 'Uma foto antiga', 'Uma mensagem'] },
+  { id: 'food-route', title: 'Rota gastronômica no bairro', vibe: 'animado', budget: 'medio', duration: '2-3h', where: 'fora', premium: false, desc: 'Entrada num lugar, prato principal em outro, sobremesa num terceiro.', checklist: ['Escolher 3 lugares', 'Ir a pé', 'Dividir tudo'] },
+  { id: 'cook-together', title: 'Cozinhar algo novo juntos', vibe: 'relax', budget: 'baixo', duration: '2-3h', where: 'casa', premium: false, desc: 'Uma receita que nenhum dos dois fez ainda.', checklist: ['Escolher a receita', 'Comprar os ingredientes', 'Uma boa playlist'] },
+  { id: 'stargazing', title: 'Observar as estrelas', vibe: 'romantico', budget: 'zero', duration: '1h', where: 'fora', premium: false, desc: 'Um lugar escuro, um cobertor e o céu.', checklist: ['Cobertor', 'App de estrelas', 'Chocolate quente'] },
+  { id: 'bday-surprise', title: 'Surpresa de aniversário', vibe: 'romantico', budget: 'alto', duration: 'dia', where: 'fora', premium: true, desc: 'Roteiro completo de surpresa passo a passo.', checklist: ['Definir o tema', 'Reservar', 'Convidar quem importa'] },
+  { id: 'weekend-trip', title: 'Bate-volta de fim de semana', vibe: 'aventura', budget: 'alto', duration: 'dia', where: 'fora', premium: true, desc: 'Uma cidade vizinha, um dia inteiro só de vocês.', checklist: ['Escolher destino', 'Combinar horário', 'Playlist da estrada'] },
 ];
 
 const QUIZZES = [
@@ -336,6 +341,7 @@ export function createDb(file) {
     "ALTER TABLE time_capsules ADD COLUMN scope TEXT DEFAULT 'couple'",
     'ALTER TABLE couples ADD COLUMN reminder_prefs TEXT',
     'ALTER TABLE couples ADD COLUMN intimacy_pin TEXT',
+    "ALTER TABLE albums ADD COLUMN caption TEXT DEFAULT ''",
   ];
   for (const ddl of MIGRATIONS) {
     try { sqlite.prepare(ddl).run(); } catch { /* coluna já existe */ }
@@ -742,14 +748,22 @@ export function createDb(file) {
       return sqlite.prepare('DELETE FROM gifts WHERE id=? AND couple_id=?').run(id, coupleId).changes > 0;
     },
 
-    listDateIdeas(coupleId) {
-      const saved = new Set(sqlite.prepare('SELECT idea_id FROM saved_date_ideas WHERE couple_id=?').all(coupleId).map(r => r.idea_id));
-      return DATE_IDEAS.map(idea => ({ ...idea, saved: saved.has(idea.id) }));
+    listDateIdeas(coupleId, myEmail = null) {
+      const rows = sqlite.prepare('SELECT idea_id, created_by FROM saved_date_ideas WHERE couple_id=?').all(coupleId);
+      const by = new Map(rows.map(r => [r.idea_id, r.created_by]));
+      return DATE_IDEAS.map(idea => {
+        const savedBy = by.get(idea.id) || null;
+        return { ...idea, saved: !!savedBy, savedByMe: savedBy === myEmail, savedByPartner: !!savedBy && savedBy !== myEmail };
+      });
     },
     saveDateIdea(coupleId, email, ideaId) {
+      if (!DATE_IDEAS.some(i => i.id === ideaId)) return null;
       sqlite.prepare(`INSERT INTO saved_date_ideas (couple_id, created_by, idea_id) VALUES (?, ?, ?)
         ON CONFLICT(couple_id, idea_id) DO NOTHING`).run(coupleId, email, String(ideaId));
       return sqlite.prepare('SELECT * FROM saved_date_ideas WHERE couple_id=? AND idea_id=?').get(coupleId, ideaId);
+    },
+    unsaveDateIdea(coupleId, ideaId) {
+      return sqlite.prepare('DELETE FROM saved_date_ideas WHERE couple_id=? AND idea_id=?').run(coupleId, String(ideaId)).changes > 0;
     },
 
     weeklySummary(coupleId) {
@@ -888,16 +902,34 @@ export function createDb(file) {
     },
 
     listAlbums(coupleId) {
+      const moments = this.listMoments(coupleId);
+      const cover = (ids) => moments.find(m => ids.includes(m.id) && m.photos?.[0])?.photos[0] || null;
       return sqlite.prepare('SELECT * FROM albums WHERE couple_id=? ORDER BY created_at DESC').all(coupleId)
-        .map(a => ({ ...a, momentIds: parseJson(a.moment_ids, []) }));
+        .map(a => { const momentIds = parseJson(a.moment_ids, []); return { ...a, momentIds, cover: cover(momentIds), photoCount: momentIds.length }; });
     },
-    createAlbum(coupleId, email, { title, momentIds }) {
+    getAlbum(coupleId, id) {
+      const a = sqlite.prepare('SELECT * FROM albums WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!a) return null;
+      const momentIds = parseJson(a.moment_ids, []);
+      const moments = this.listMoments(coupleId).filter(m => momentIds.includes(m.id));
+      return { ...a, momentIds, moments };
+    },
+    createAlbum(coupleId, email, { title, caption = '', momentIds }) {
       const ids = Array.isArray(momentIds) && momentIds.length ? momentIds : this.listMoments(coupleId).map(m => m.id);
-      const r = sqlite.prepare('INSERT INTO albums (couple_id, created_by, title, moment_ids) VALUES (?, ?, ?, ?)')
-        .run(coupleId, email, String(title).slice(0, 120), JSON.stringify(ids.slice(0, 100)));
-      const album = this.listAlbums(coupleId).find(a => a.id === r.lastInsertRowid);
-      album.moments = this.listMoments(coupleId).filter(m => album.momentIds.includes(m.id));
-      return album;
+      const r = sqlite.prepare('INSERT INTO albums (couple_id, created_by, title, caption, moment_ids) VALUES (?, ?, ?, ?, ?)')
+        .run(coupleId, email, String(title).slice(0, 120), String(caption).slice(0, 500), JSON.stringify(ids.slice(0, 100)));
+      return this.getAlbum(coupleId, r.lastInsertRowid);
+    },
+    updateAlbum(coupleId, id, patch) {
+      const a = sqlite.prepare('SELECT id FROM albums WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!a) return null;
+      if (patch.title !== undefined) sqlite.prepare('UPDATE albums SET title=? WHERE id=?').run(String(patch.title).slice(0, 120), id);
+      if (patch.caption !== undefined) sqlite.prepare('UPDATE albums SET caption=? WHERE id=?').run(String(patch.caption).slice(0, 500), id);
+      if (Array.isArray(patch.momentIds)) sqlite.prepare('UPDATE albums SET moment_ids=? WHERE id=?').run(JSON.stringify(patch.momentIds.slice(0, 100)), id);
+      return this.getAlbum(coupleId, id);
+    },
+    deleteAlbum(coupleId, id) {
+      return sqlite.prepare('DELETE FROM albums WHERE id=? AND couple_id=?').run(id, coupleId).changes > 0;
     },
 
     listIntimacyPrompts() {

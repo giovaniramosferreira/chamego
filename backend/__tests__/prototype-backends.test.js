@@ -307,3 +307,48 @@ describe('F2 — conquistas, lembretes, resumo, intimidade', () => {
     expect(blocked.status).toBe(402);
   });
 });
+
+describe('F3 — álbuns e ideias de date', () => {
+  it('date-ideas: salvar, ver que o par salvou e dessalvar', async () => {
+    const { a, b } = await coupleWithPartner();
+    const ideas = (await request(app).get('/api/date-ideas').set('Cookie', a)).body.ideas;
+    expect(ideas.length).toBeGreaterThan(3);
+    expect(ideas.some((i) => i.premium)).toBe(true);
+    const idea = ideas.find((i) => !i.premium);
+
+    await request(app).post('/api/date-ideas/saved').set('Cookie', b).send({ ideaId: idea.id });
+    const forA = (await request(app).get('/api/date-ideas').set('Cookie', a)).body.ideas.find((i) => i.id === idea.id);
+    expect(forA.saved).toBe(true);
+    expect(forA.savedByPartner).toBe(true);
+    expect(forA.savedByMe).toBe(false);
+
+    await request(app).delete(`/api/date-ideas/saved/${idea.id}`).set('Cookie', b);
+    const cleared = (await request(app).get('/api/date-ideas').set('Cookie', a)).body.ideas.find((i) => i.id === idea.id);
+    expect(cleared.saved).toBe(false);
+
+    const bad = await request(app).post('/api/date-ideas/saved').set('Cookie', a).send({ ideaId: 'inexistente' });
+    expect(bad.status).toBe(404);
+  });
+
+  it('álbuns: cria com legenda e momentos, edita e apaga', async () => {
+    const cookie = await withCouple();
+    await request(app).post('/api/moments').set('Cookie', cookie).field('text', 'Praia');
+    const moments = (await request(app).get('/api/moments').set('Cookie', cookie)).body.moments;
+
+    const created = await request(app).post('/api/albums').set('Cookie', cookie).send({
+      title: 'Nosso verão', caption: 'Dias de sol', momentIds: moments.map((m) => m.id),
+    });
+    expect(created.status).toBe(200);
+    expect(created.body.album.caption).toBe('Dias de sol');
+    const id = created.body.album.id;
+
+    const detail = await request(app).get(`/api/albums/${id}`).set('Cookie', cookie);
+    expect(detail.body.album.moments).toHaveLength(1);
+
+    const patched = await request(app).patch(`/api/albums/${id}`).set('Cookie', cookie).send({ title: 'Verão 2026' });
+    expect(patched.body.album.title).toBe('Verão 2026');
+
+    expect((await request(app).delete(`/api/albums/${id}`).set('Cookie', cookie)).status).toBe(200);
+    expect((await request(app).get('/api/albums').set('Cookie', cookie)).body.albums).toHaveLength(0);
+  });
+});
