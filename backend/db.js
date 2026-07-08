@@ -272,9 +272,12 @@ const QUIZZES = [
 ];
 
 const INTIMACY_PROMPTS = [
-  { id: 'gratidao', tone: 'carinho', text: 'Uma coisa pequena que voce fez e me deixou feliz foi...' },
-  { id: 'futuro', tone: 'futuro', text: 'Quando penso no nosso futuro, eu queria construir...' },
-  { id: 'apoio', tone: 'cuidado', text: 'Nesta semana, eu me sentiria apoiado(a) se...' },
+  { id: 'conversa', tone: 'Conversa', text: 'O que em mim faz você se sentir em casa?', premium: false },
+  { id: 'gratidao', tone: 'Carinho', text: 'Uma coisa pequena que você fez e me deixou feliz foi...', premium: false },
+  { id: 'futuro', tone: 'Futuro', text: 'Quando penso no nosso futuro, eu queria construir...', premium: false },
+  { id: 'reconexao', tone: 'Reconexão', text: 'Quando a rotina aperta, o que mais sinto falta da gente é...', premium: false },
+  { id: 'desejo', tone: 'Desejo', text: 'Algo que me deixa mais próximo(a) de você é...', premium: true },
+  { id: 'combinados', tone: 'Combinados', text: 'Um combinado nosso que eu queria rever com carinho é...', premium: true },
 ];
 
 function parseJson(value, fallback) {
@@ -288,6 +291,17 @@ function normalizeIdeas(ideas) {
     if (typeof i === 'string') return { text: i.slice(0, 160), done: false, cost: 0 };
     return { text: String(i?.text || '').slice(0, 160), done: !!i?.done, cost: Number(i?.cost) || 0 };
   }).filter((i) => i.text);
+}
+
+// Intervalo (segunda–domingo) da semana deslocada por `offset` semanas no passado.
+function weekRange(offset = 0) {
+  const now = new Date();
+  const day = (now.getDay() + 6) % 7; // segunda = 0
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - day - offset * 7);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
 }
 
 // Cápsula selada: esconde conteúdo até open_date. `sealed` diz se ainda está fechada.
@@ -320,6 +334,8 @@ export function createDb(file) {
     'ALTER TABLE time_capsules ADD COLUMN media_type TEXT',
     "ALTER TABLE time_capsules ADD COLUMN recurrence TEXT DEFAULT 'none'",
     "ALTER TABLE time_capsules ADD COLUMN scope TEXT DEFAULT 'couple'",
+    'ALTER TABLE couples ADD COLUMN reminder_prefs TEXT',
+    'ALTER TABLE couples ADD COLUMN intimacy_pin TEXT',
   ];
   for (const ddl of MIGRATIONS) {
     try { sqlite.prepare(ddl).run(); } catch { /* coluna já existe */ }
@@ -745,23 +761,70 @@ export function createDb(file) {
         activeGoals: this.activeGoalsCount(coupleId),
       };
     },
+    reminderPrefs(coupleId) {
+      const row = sqlite.prepare('SELECT reminder_prefs FROM couples WHERE id=?').get(coupleId);
+      return { frequency: 'equilibrio', types: { checkin: true, dates: true, goals: true, routine: false }, ...parseJson(row?.reminder_prefs, {}) };
+    },
+    setReminderPrefs(coupleId, patch) {
+      const cur = this.reminderPrefs(coupleId);
+      const next = { frequency: patch.frequency || cur.frequency, types: { ...cur.types, ...(patch.types || {}) } };
+      sqlite.prepare('UPDATE couples SET reminder_prefs=? WHERE id=?').run(JSON.stringify(next), coupleId);
+      return next;
+    },
     listReminders(coupleId) {
       const summary = this.weeklySummary(coupleId);
-      const out = [];
-      if (!summary.checkinsCount) out.push({ id: 'checkin', icon: 'heart', title: 'Fazer check-in', action: 'checkin' });
-      if (!summary.eventsCount) out.push({ id: 'event', icon: 'calendar', title: 'Criar o proximo evento', action: 'event-create' });
-      if (summary.activeGoals > 0) out.push({ id: 'goal', icon: 'target', title: 'Retomar uma meta ativa', action: 'metas' });
-      if (!out.length) out.push({ id: 'care', icon: 'bell', title: 'Mandar um carinho hoje', action: 'chat' });
-      return out;
+      const streak = this.checkinStreak(coupleId);
+      const prefs = this.reminderPrefs(coupleId);
+      const t = prefs.types;
+      const today = [];
+      const later = [];
+      if (t.checkin && streak === 0) today.push({ id: 'checkin', icon: 'heart', title: 'Faz um tempo sem check-in', sub: 'Que tal registrar como você está?', action: 'checkin', when: 'today' });
+      if (t.dates && !summary.eventsCount) today.push({ id: 'event', icon: 'calendar', title: 'Nenhum evento marcado', sub: 'Combine o próximo date de vocês', action: 'agenda', when: 'today' });
+      if (t.goals && summary.activeGoals > 0) later.push({ id: 'goal', icon: 'target', title: 'Vocês têm metas em aberto', sub: 'Retomar uma etapa', action: 'planos', when: 'later' });
+      if (t.routine && summary.momentsCount === 0) later.push({ id: 'moment', icon: 'image', title: 'Guardem um momento', sub: 'Uma foto ou frase do dia', action: 'momentos', when: 'later' });
+      later.push({ id: 'care', icon: 'chat', title: 'Responder a pergunta da semana', sub: 'Puxem assunto no chat', action: 'chat', when: 'later' });
+      return [...today, ...later];
     },
     listAchievements(coupleId) {
-      const summary = this.weeklySummary(coupleId);
+      const s = this.weeklySummary(coupleId);
+      const streak = this.checkinStreak(coupleId);
+      const plans = sqlite.prepare('SELECT COUNT(*) c FROM plans WHERE couple_id=?').get(coupleId).c;
+      const caps = sqlite.prepare('SELECT COUNT(*) c FROM time_capsules WHERE couple_id=?').get(coupleId).c;
+      const doneItems = sqlite.prepare('SELECT COUNT(*) c FROM list_items i JOIN lists l ON l.id=i.list_id WHERE l.couple_id=? AND i.done=1').get(coupleId).c;
+      const eventsAll = s.eventsCount;
       return [
-        { id: 'first-event', title: 'Primeiro evento', unlocked: summary.eventsCount > 0 },
-        { id: 'first-moment', title: 'Primeiro momento', unlocked: summary.momentsCount > 0 },
-        { id: 'first-checkin', title: 'Primeiro check-in', unlocked: summary.checkinsCount > 0 },
-        { id: 'planner', title: 'Vida a dois em movimento', unlocked: summary.activeGoals > 0 || summary.listsCount > 0 },
+        { id: 'first-checkin', icon: 'heart', title: 'Primeiro check-in', desc: 'Vocês registraram como estavam pela primeira vez.', unlocked: s.checkinsCount > 0 },
+        { id: 'first-moment', icon: 'image', title: 'Primeiro momento', desc: 'A linha do tempo de vocês começou.', unlocked: s.momentsCount > 0 },
+        { id: 'first-event', icon: 'calendar', title: 'Primeiro evento', desc: 'O primeiro compromisso entrou na agenda.', unlocked: eventsAll > 0 },
+        { id: 'streak-7', icon: 'check', title: '7 check-ins seguidos', desc: 'Uma semana inteira de constância.', unlocked: streak >= 7 },
+        { id: 'first-plan', icon: 'target', title: 'Primeiro plano', desc: 'Um sonho grande virou etapas.', unlocked: plans > 0 },
+        { id: 'first-capsule', icon: 'gift', title: 'Primeira cápsula', desc: 'Guardaram algo para o futuro.', unlocked: caps > 0 },
+        { id: 'ten-done', icon: 'list', title: '10 tarefas concluídas', desc: 'Organização a dois em movimento.', unlocked: doneItems >= 10, progress: { current: Math.min(doneItems, 10), total: 10 } },
+        { id: 'five-dates', icon: 'star', title: '5 dates registrados', desc: 'Tempo de qualidade acontecendo.', unlocked: eventsAll >= 5, progress: { current: Math.min(eventsAll, 5), total: 5 } },
       ];
+    },
+    // Resumo semanal (semana seg–dom). weekOffset 0 = atual, 1 = anterior…
+    weeklyReport(coupleId, weekOffset = 0) {
+      const { start, end } = weekRange(weekOffset);
+      const inRange = (table, col) => sqlite.prepare(`SELECT COUNT(*) c FROM ${table} WHERE couple_id=? AND ${col} BETWEEN ? AND ?`).get(coupleId, start, end).c;
+      const events = inRange('events', 'date');
+      const moments = inRange('moments', 'date');
+      const checkins = inRange('checkins', 'date');
+      const tasksClosed = sqlite.prepare(`SELECT COUNT(*) c FROM list_items i JOIN lists l ON l.id=i.list_id
+        WHERE l.couple_id=? AND i.done=1 AND date(i.created_at) BETWEEN ? AND ?`).get(coupleId, start, end).c;
+      const moodRow = sqlite.prepare(`SELECT mood, COUNT(*) c FROM checkins WHERE couple_id=? AND date BETWEEN ? AND ? GROUP BY mood ORDER BY c DESC LIMIT 1`).get(coupleId, start, end);
+      const highlights = [];
+      if (moodRow) highlights.push({ icon: 'heart', text: `Humor predominante da semana: ${moodRow.mood}.` });
+      if (events > 0) highlights.push({ icon: 'star', text: `${events} ${events === 1 ? 'date/evento' : 'dates/eventos'} na agenda de vocês.` });
+      if (tasksClosed > 0) highlights.push({ icon: 'check', text: `${tasksClosed} ${tasksClosed === 1 ? 'tarefa fechada' : 'tarefas fechadas'} nas listas.` });
+      if (!highlights.length) highlights.push({ icon: 'calendar', text: 'Semana tranquila — registrem um check-in para o próximo resumo.' });
+      return { start, end, events, moments, checkins, tasksClosed, activeGoals: this.activeGoalsCount(coupleId), highlights };
+    },
+    weeklyHistory(coupleId) {
+      return Array.from({ length: 8 }, (_, i) => {
+        const r = this.weeklyReport(coupleId, i);
+        return { start: r.start, end: r.end, events: r.events, moments: r.moments, checkins: r.checkins };
+      });
     },
 
     listQuizzes(coupleId, email) {
@@ -840,12 +903,48 @@ export function createDb(file) {
     listIntimacyPrompts() {
       return INTIMACY_PROMPTS;
     },
+    getIntimacyPrompt(id) {
+      return INTIMACY_PROMPTS.find(p => p.id === id) || null;
+    },
     createIntimacySession(coupleId, email, { promptId, note = '' }) {
       const prompt = INTIMACY_PROMPTS.find(p => p.id === promptId);
       if (!prompt) return null;
       const r = sqlite.prepare('INSERT INTO intimacy_sessions (couple_id, created_by, prompt_id, note) VALUES (?, ?, ?, ?)')
         .run(coupleId, email, promptId, String(note).slice(0, 1000));
       return sqlite.prepare('SELECT * FROM intimacy_sessions WHERE id=?').get(r.lastInsertRowid);
+    },
+    listIntimacySessions(coupleId) {
+      const promptText = (id) => INTIMACY_PROMPTS.find(p => p.id === id)?.text || '';
+      const promptTone = (id) => INTIMACY_PROMPTS.find(p => p.id === id)?.tone || '';
+      return sqlite.prepare('SELECT * FROM intimacy_sessions WHERE couple_id=? ORDER BY id DESC').all(coupleId)
+        .map(s => ({ ...s, prompt_text: promptText(s.prompt_id), tone: promptTone(s.prompt_id) }));
+    },
+    // Resposta do parceiro à mesma carta (prompt), se houver.
+    partnerIntimacyResponse(coupleId, promptId, myEmail) {
+      const row = sqlite.prepare(`SELECT * FROM intimacy_sessions WHERE couple_id=? AND prompt_id=? AND created_by!=?
+        ORDER BY id DESC LIMIT 1`).get(coupleId, promptId, myEmail);
+      return row || null;
+    },
+    deleteIntimacySession(coupleId, id) {
+      return sqlite.prepare('DELETE FROM intimacy_sessions WHERE id=? AND couple_id=?').run(id, coupleId).changes > 0;
+    },
+    clearIntimacySessions(coupleId) {
+      sqlite.prepare('DELETE FROM intimacy_sessions WHERE couple_id=?').run(coupleId);
+      return true;
+    },
+    intimacyHasPin(coupleId) {
+      const row = sqlite.prepare('SELECT intimacy_pin FROM couples WHERE id=?').get(coupleId);
+      return !!row?.intimacy_pin;
+    },
+    setIntimacyPin(coupleId, pin) {
+      const value = pin && /^\d{4}$/.test(String(pin)) ? String(pin) : null;
+      sqlite.prepare('UPDATE couples SET intimacy_pin=? WHERE id=?').run(value, coupleId);
+      return { hasPin: !!value };
+    },
+    verifyIntimacyPin(coupleId, pin) {
+      const row = sqlite.prepare('SELECT intimacy_pin FROM couples WHERE id=?').get(coupleId);
+      if (!row?.intimacy_pin) return true; // sem PIN, sem trava
+      return String(pin) === row.intimacy_pin;
     },
     getSubscription(coupleId) {
       const row = sqlite.prepare('SELECT * FROM subscriptions WHERE couple_id=?').get(coupleId);

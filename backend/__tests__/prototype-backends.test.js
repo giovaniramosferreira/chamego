@@ -242,3 +242,68 @@ describe('F1 — planos, presentes, quiz, capsula (completo)', () => {
     expect(opened.body.capsule.opened_at).toBeTruthy();
   });
 });
+
+describe('F2 — conquistas, lembretes, resumo, intimidade', () => {
+  it('lembretes: preferências persistem e filtram os tipos', async () => {
+    const cookie = await withCouple();
+    const first = await request(app).get('/api/reminders').set('Cookie', cookie);
+    expect(first.body.prefs.types.checkin).toBe(true);
+    expect(first.body.reminders.some((r) => r.id === 'checkin')).toBe(true);
+
+    const patched = await request(app).patch('/api/reminders/prefs').set('Cookie', cookie).send({ types: { checkin: false } });
+    expect(patched.body.prefs.types.checkin).toBe(false);
+
+    const after = await request(app).get('/api/reminders').set('Cookie', cookie);
+    expect(after.body.reminders.some((r) => r.id === 'checkin')).toBe(false);
+  });
+
+  it('conquistas: desbloqueiam com dados reais', async () => {
+    const cookie = await withCouple();
+    await request(app).post('/api/checkins').set('Cookie', cookie).send({ mood: 'bem' });
+    const ach = await request(app).get('/api/achievements').set('Cookie', cookie);
+    const checkinBadge = ach.body.achievements.find((a) => a.id === 'first-checkin');
+    expect(checkinBadge.unlocked).toBe(true);
+    const dates = ach.body.achievements.find((a) => a.id === 'five-dates');
+    expect(dates.progress.total).toBe(5);
+  });
+
+  it('resumo: semana atual conta eventos e histórico tem 8 semanas', async () => {
+    const cookie = await withCouple();
+    await request(app).post('/api/events').set('Cookie', cookie).send({ title: 'Date', date: new Date().toLocaleDateString('en-CA') });
+    const report = await request(app).get('/api/weekly-report').set('Cookie', cookie);
+    expect(report.body.report.events).toBeGreaterThanOrEqual(1);
+    expect(report.body.report.highlights.length).toBeGreaterThan(0);
+    const history = await request(app).get('/api/weekly-report/history').set('Cookie', cookie);
+    expect(history.body.history).toHaveLength(8);
+  });
+
+  it('intimidade: sessões, resposta do par, apagar e PIN', async () => {
+    const { a, b } = await coupleWithPartner();
+    const prompts = (await request(app).get('/api/intimacy/prompts').set('Cookie', a)).body.prompts;
+    const free = prompts.find((p) => !p.premium);
+
+    await request(app).post('/api/intimacy/sessions').set('Cookie', a).send({ promptId: free.id, note: 'resposta A' });
+    const bRes = await request(app).post('/api/intimacy/sessions').set('Cookie', b).send({ promptId: free.id, note: 'resposta B' });
+    expect(bRes.body.partner.note).toBe('resposta A'); // B vê a resposta de A
+
+    const sessions = await request(app).get('/api/intimacy/sessions').set('Cookie', a);
+    expect(sessions.body.sessions.length).toBe(2);
+    expect(sessions.body.sessions[0].prompt_text).toBeTruthy();
+
+    const del = await request(app).delete(`/api/intimacy/sessions/${sessions.body.sessions[0].id}`).set('Cookie', a);
+    expect(del.status).toBe(200);
+
+    // PIN
+    await request(app).patch('/api/intimacy/pin').set('Cookie', a).send({ pin: '1234' });
+    expect((await request(app).get('/api/intimacy/prompts').set('Cookie', a)).body.hasPin).toBe(true);
+    expect((await request(app).post('/api/intimacy/unlock').set('Cookie', a).send({ pin: '0000' })).status).toBe(401);
+    expect((await request(app).post('/api/intimacy/unlock').set('Cookie', a).send({ pin: '1234' })).status).toBe(200);
+  });
+
+  it('intimidade: trilha premium bloqueada sem assinatura', async () => {
+    const cookie = await withCouple();
+    const premium = (await request(app).get('/api/intimacy/prompts').set('Cookie', cookie)).body.prompts.find((p) => p.premium);
+    const blocked = await request(app).post('/api/intimacy/sessions').set('Cookie', cookie).send({ promptId: premium.id, note: 'x' });
+    expect(blocked.status).toBe(402);
+  });
+});

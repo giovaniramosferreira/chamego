@@ -64,6 +64,14 @@ export default function VocesTab() {
         <Row icon="heart" title="Quiz do casal" sub="Vejam o quanto combinam" onClick={() => nav('/app/quiz')} />
       </RowList>
 
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Cuidar</p>
+      <RowList className="mb-4">
+        <Row icon="star" title="Conquistas" sub="Os marcos de vocês" onClick={() => nav('/app/conquistas')} />
+        <Row icon="bell" title="Lembretes de carinho" sub="Sugestões leves, sem cobrança" onClick={() => nav('/app/lembretes')} />
+        <Row icon="calendar" title="Resumo semanal" sub="A semana de vocês em números" onClick={() => nav('/app/resumo')} />
+        <Row icon="shield" title="Conexão" sub="Conversas guiadas, espaço privado" onClick={() => nav('/app/intimidade')} />
+      </RowList>
+
       {partner && data?.partnerCheckin && (
         <Card className="flex items-center gap-3">
           <span className="text-2xl">{MOODS.find((m) => m[1] === data.partnerCheckin.mood)?.[0] || '💛'}</span>

@@ -14,12 +14,16 @@ export function Btn({ variant = 'primary', block = false, to, className = '', ch
   return <button className={cls} {...props}>{children}</button>;
 }
 
-export function Field({ label, ...props }) {
+export function Field({ label, children, ...props }) {
+  // Com children (textarea/select), renderiza-os; senão, um <input> padrão.
+  // Nunca repassa children pro input (void element) — evita crash de render.
   return (
     <label className="block mb-4">
       {label && <span className="block text-sm font-medium text-ink-2 mb-1.5">{label}</span>}
-      <input className="w-full rounded-btn bg-surface px-4 py-3 text-ink placeholder:text-ink-3 shadow-[inset_0_0_0_1px_var(--line-2)] focus:shadow-[inset_0_0_0_1.5px_var(--accent)] outline-none transition-shadow"
-        {...props} />
+      {children || (
+        <input className="w-full rounded-btn bg-surface px-4 py-3 text-ink placeholder:text-ink-3 shadow-[inset_0_0_0_1px_var(--line-2)] focus:shadow-[inset_0_0_0_1.5px_var(--accent)] outline-none transition-shadow"
+          {...props} />
+      )}
     </label>
   );
 }

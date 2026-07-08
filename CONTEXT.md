@@ -79,6 +79,20 @@ Espaço do Casal. Tabelas: `plans`, `plan_steps`, `plan_attachments`, `gifts`,
 - **Premium**: `subscriptions.entitlements` libera recursos; **sem gateway de
   pagamento ainda** — ativação via `PATCH /api/subscription` (interruptor manual).
 
+### F2 (aba Vocês → seção "Cuidar")
+
+- **Conquistas** (`/app/conquistas`): badges derivados de dados reais (check-ins,
+  streak, planos, cápsulas, tarefas), com progresso e coleção premium.
+- **Lembretes** (`/app/lembretes`): sugestões por contexto real, agrupadas
+  (hoje/depois), dispensáveis; **preferências** persistidas em
+  `couples.reminder_prefs` (frequência + tipos habilitados filtram a lista).
+- **Resumo** (`/app/resumo`): relatório por semana (seg–dom) calculado dos dados
+  reais (`weeklyReport(offset)`), com destaques e histórico de 8 semanas —
+  sem snapshots agendados.
+- **Intimidade** (`/app/intimidade`): conversas guiadas por tom; responder e ver
+  a resposta do par à mesma carta; histórico apagável; tons premium travados;
+  trava opcional por **PIN** (`couples.intimacy_pin`, verificado no servidor).
+
 ## Relationships
 
 - Um usuário (email) pertence a no máximo um **Espaço do Casal** (`couple_members.user_email UNIQUE`)

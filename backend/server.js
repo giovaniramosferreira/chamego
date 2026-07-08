@@ -446,7 +446,10 @@ app.post('/api/date-ideas/saved', withCouple, (req, res) => {
 });
 
 app.get('/api/weekly-summary', withCouple, (req, res) => res.json({ summary: db.weeklySummary(req.couple.id) }));
-app.get('/api/reminders', withCouple, (req, res) => res.json({ reminders: db.listReminders(req.couple.id) }));
+app.get('/api/weekly-report', withCouple, (req, res) => res.json({ report: db.weeklyReport(req.couple.id, Number(req.query.week) || 0) }));
+app.get('/api/weekly-report/history', withCouple, (req, res) => res.json({ history: db.weeklyHistory(req.couple.id) }));
+app.get('/api/reminders', withCouple, (req, res) => res.json({ reminders: db.listReminders(req.couple.id), prefs: db.reminderPrefs(req.couple.id) }));
+app.patch('/api/reminders/prefs', withCouple, (req, res) => res.json({ prefs: db.setReminderPrefs(req.couple.id, req.body || {}) }));
 app.get('/api/achievements', withCouple, (req, res) => res.json({ achievements: db.listAchievements(req.couple.id) }));
 
 app.get('/api/quizzes', withCouple, (req, res) => res.json({ quizzes: db.listQuizzes(req.couple.id, req.user.email) }));
@@ -489,11 +492,25 @@ app.post('/api/albums', withCouple, (req, res) => {
   res.json({ album: db.createAlbum(req.couple.id, req.user.email, req.body) });
 });
 
-app.get('/api/intimacy/prompts', withCouple, (req, res) => res.json({ prompts: db.listIntimacyPrompts() }));
+app.get('/api/intimacy/prompts', withCouple, (req, res) => res.json({ prompts: db.listIntimacyPrompts(), hasPin: db.intimacyHasPin(req.couple.id) }));
+app.get('/api/intimacy/sessions', withCouple, (req, res) => res.json({ sessions: db.listIntimacySessions(req.couple.id) }));
+app.get('/api/intimacy/prompts/:id/partner', withCouple, (req, res) => res.json({ response: db.partnerIntimacyResponse(req.couple.id, req.params.id, req.user.email) }));
 app.post('/api/intimacy/sessions', withCouple, (req, res) => {
+  const prompt = db.getIntimacyPrompt(req.body?.promptId);
+  if (!prompt) return res.status(404).json({ error: 'Pergunta guiada não encontrada' });
+  if (prompt.premium && !hasEntitlement(req.couple.id, 'premium')) return res.status(402).json({ error: 'Essa trilha é Premium', upgrade: true });
   const session = db.createIntimacySession(req.couple.id, req.user.email, req.body || {});
-  if (!session) return res.status(404).json({ error: 'Pergunta guiada não encontrada' });
-  res.json({ session });
+  res.json({ session, partner: db.partnerIntimacyResponse(req.couple.id, prompt.id, req.user.email) });
+});
+app.delete('/api/intimacy/sessions/:id', withCouple, (req, res) => {
+  if (!db.deleteIntimacySession(req.couple.id, Number(req.params.id))) return res.status(404).json({ error: 'Sessão não encontrada' });
+  res.json({ ok: true });
+});
+app.delete('/api/intimacy/sessions', withCouple, (req, res) => { db.clearIntimacySessions(req.couple.id); res.json({ ok: true }); });
+app.patch('/api/intimacy/pin', withCouple, (req, res) => res.json(db.setIntimacyPin(req.couple.id, req.body?.pin ?? null)));
+app.post('/api/intimacy/unlock', withCouple, (req, res) => {
+  if (!db.verifyIntimacyPin(req.couple.id, req.body?.pin)) return res.status(401).json({ error: 'Código incorreto' });
+  res.json({ ok: true });
 });
 
 app.get('/api/subscription', withCouple, (req, res) => res.json({ subscription: db.getSubscription(req.couple.id) }));
