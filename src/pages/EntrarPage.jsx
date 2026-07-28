@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useSession } from '../lib/session-context.js';
 import { Btn, Field, Logo } from '../ui/kit.jsx';
@@ -98,6 +98,12 @@ export default function EntrarPage() {
             </form>
             {error && <p className="text-accent-press text-sm mt-3 text-center">{error}</p>}
             <p className="text-ink-3 text-sm text-center mt-6">Sem senha: enviamos um link de uso único pro seu e-mail. Conta nova nasce no primeiro acesso.</p>
+            {/* Consentimento no "continuar": os termos deixaram de ser uma tela
+                obrigatória no meio do caminho, mas seguem a um toque daqui. */}
+            <p className="text-ink-3 text-xs text-center mt-3 leading-relaxed">
+              Ao continuar, você concorda com os{' '}
+              <Link to="/termos" className="underline">Termos e a Política de Privacidade</Link>.
+            </p>
           </div>
         )}
 

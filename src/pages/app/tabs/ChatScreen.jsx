@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
 import { useSession } from '../../../lib/session-context.js';
+import { useToast } from '../../../lib/toast-context.js';
 import { AppHeader, Btn, Spinner } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
@@ -11,9 +12,10 @@ function fmtTime(iso) {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function ChatScreen() {
+export default function ChatScreen({ onRead }) {
   const nav = useNavigate();
   const { user, partner } = useSession();
+  const { toast } = useToast();
   const [msgs, setMsgs] = useState(null);
   const [text, setText] = useState('');
   const lastId = useRef(0);
@@ -28,11 +30,15 @@ export default function ChatScreen() {
         lastId.current = messages[messages.length - 1].id;
         setMsgs((prev) => [...(prev || []), ...messages]);
         setTimeout(scroll, 50);
+        // Com o chat aberto, tudo que chega já nasce lido — o badge zera.
+        api('/api/messages/read', { method: 'POST', body: { lastId: lastId.current } })
+          .then(() => onRead?.())
+          .catch(() => {});
       } else if (msgs === null) {
         setMsgs([]);
       }
     } catch { /* ignora falha de rede momentânea */ }
-  }, [msgs]);
+  }, [msgs, onRead]);
 
   useEffect(() => {
     poll();
@@ -45,10 +51,16 @@ export default function ChatScreen() {
     const t = text.trim();
     if (!t) return;
     setText('');
-    const { message } = await api('/api/messages', { method: 'POST', body: { text: t } });
-    lastId.current = message.id;
-    setMsgs((prev) => [...(prev || []), message]);
-    setTimeout(scroll, 50);
+    try {
+      const { message } = await api('/api/messages', { method: 'POST', body: { text: t } });
+      lastId.current = message.id;
+      setMsgs((prev) => [...(prev || []), message]);
+      setTimeout(scroll, 50);
+    } catch (err) {
+      // Falhou? A mensagem volta pro campo em vez de sumir sem aviso.
+      setText(t);
+      toast(err.message, { tone: 'error' });
+    }
   }
 
   return (

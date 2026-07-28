@@ -12,7 +12,7 @@ async function login(email) {
 }
 async function withCouple() {
   const cookie = await login(`tab${seq++}@b.com`);
-  await request(app).post('/api/couples').set('Cookie', cookie).send({ name: 'Nós', milestoneDate: '2024-01-01' });
+  await request(app).post('/api/couples').set('Cookie', cookie).send({ name: 'Nós', milestoneDate: '2024-01-01', seed: false });
   return cookie;
 }
 const today = () => new Date().toLocaleDateString('en-CA');

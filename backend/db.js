@@ -204,6 +204,21 @@ const SCHEMA = [
     url TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))
   )`,
+  // Leitura do chat por pessoa — alimenta o badge de não lidas na tab bar.
+  `CREATE TABLE IF NOT EXISTS message_reads (
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL,
+    last_read_id INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (couple_id, user_email)
+  )`,
+  // Idempotência dos emails automáticos: uma linha por (casal, tipo, chave).
+  `CREATE TABLE IF NOT EXISTS notifications_sent (
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    kind TEXT NOT NULL,
+    key TEXT NOT NULL,
+    sent_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (couple_id, kind, key)
+  )`,
 ];
 
 const DATE_IDEAS = [
@@ -342,6 +357,8 @@ export function createDb(file) {
     'ALTER TABLE couples ADD COLUMN reminder_prefs TEXT',
     'ALTER TABLE couples ADD COLUMN intimacy_pin TEXT',
     "ALTER TABLE albums ADD COLUMN caption TEXT DEFAULT ''",
+    // Feed .ics do casal: token público (só leitura de eventos compartilhados).
+    'ALTER TABLE couples ADD COLUMN calendar_token TEXT',
   ];
   for (const ddl of MIGRATIONS) {
     try { sqlite.prepare(ddl).run(); } catch { /* coluna já existe */ }
@@ -777,11 +794,22 @@ export function createDb(file) {
     },
     reminderPrefs(coupleId) {
       const row = sqlite.prepare('SELECT reminder_prefs FROM couples WHERE id=?').get(coupleId);
-      return { frequency: 'equilibrio', types: { checkin: true, dates: true, goals: true, routine: false }, ...parseJson(row?.reminder_prefs, {}) };
+      const stored = parseJson(row?.reminder_prefs, {});
+      return {
+        ...stored,
+        frequency: stored.frequency || 'equilibrio',
+        types: { checkin: true, dates: true, goals: true, routine: false, ...(stored.types || {}) },
+        // Emails automáticos: véspera de evento e resumo de domingo.
+        email: { eventEve: true, weekly: true, ...(stored.email || {}) },
+      };
     },
     setReminderPrefs(coupleId, patch) {
       const cur = this.reminderPrefs(coupleId);
-      const next = { frequency: patch.frequency || cur.frequency, types: { ...cur.types, ...(patch.types || {}) } };
+      const next = {
+        frequency: patch.frequency || cur.frequency,
+        types: { ...cur.types, ...(patch.types || {}) },
+        email: { ...cur.email, ...(patch.email || {}) },
+      };
       sqlite.prepare('UPDATE couples SET reminder_prefs=? WHERE id=?').run(JSON.stringify(next), coupleId);
       return next;
     },
@@ -978,6 +1006,174 @@ export function createDb(file) {
       if (!row?.intimacy_pin) return true; // sem PIN, sem trava
       return String(pin) === row.intimacy_pin;
     },
+    /* ── Chat: leitura e não lidas (badge da tab bar) ── */
+    markMessagesRead(coupleId, email, lastId) {
+      const last = Number(lastId) || sqlite.prepare('SELECT MAX(id) m FROM messages WHERE couple_id=?').get(coupleId)?.m || 0;
+      sqlite.prepare(`INSERT INTO message_reads (couple_id, user_email, last_read_id) VALUES (?, ?, ?)
+        ON CONFLICT(couple_id, user_email) DO UPDATE SET last_read_id=MAX(last_read_id, excluded.last_read_id)`)
+        .run(coupleId, email, last);
+      return this.unreadCount(coupleId, email);
+    },
+    unreadCount(coupleId, email) {
+      const read = sqlite.prepare('SELECT last_read_id FROM message_reads WHERE couple_id=? AND user_email=?').get(coupleId, email)?.last_read_id || 0;
+      return sqlite.prepare('SELECT COUNT(*) c FROM messages WHERE couple_id=? AND sender_email!=? AND id>?').get(coupleId, email, read).c;
+    },
+
+    /* ── Busca global (Agenda, Listas, Momentos, Planos, Datas) ── */
+    search(coupleId, term, email) {
+      const needle = String(term || '').trim().slice(0, 60).toLowerCase();
+      if (!needle) return [];
+      const hit = (...fields) => fields.some((f) => String(f || '').toLowerCase().includes(needle));
+      const out = [];
+      for (const e of sqlite.prepare('SELECT * FROM events WHERE couple_id=? ORDER BY date').all(coupleId)) {
+        if (hit(e.title, e.location, e.notes)) out.push({ type: 'evento', id: e.id, title: e.title, sub: e.date, icon: 'calendar', to: '/app/agenda' });
+      }
+      for (const l of sqlite.prepare('SELECT * FROM lists WHERE couple_id=?').all(coupleId)) {
+        if (hit(l.title)) out.push({ type: 'lista', id: l.id, title: l.title, sub: 'Lista', icon: 'list', to: `/app/listas/${l.id}` });
+      }
+      for (const i of sqlite.prepare('SELECT i.*, l.title AS list_title FROM list_items i JOIN lists l ON l.id=i.list_id WHERE l.couple_id=?').all(coupleId)) {
+        if (hit(i.text)) out.push({ type: 'item', id: i.id, title: i.text, sub: `em ${i.list_title}`, icon: 'check', to: `/app/listas/${i.list_id}` });
+      }
+      for (const m of sqlite.prepare('SELECT * FROM moments WHERE couple_id=? ORDER BY date DESC').all(coupleId)) {
+        if (hit(m.text)) out.push({ type: 'momento', id: m.id, title: m.text.slice(0, 60), sub: m.date, icon: 'image', to: '/app/momentos' });
+      }
+      for (const p of sqlite.prepare('SELECT * FROM plans WHERE couple_id=?').all(coupleId)) {
+        if (hit(p.title)) out.push({ type: 'plano', id: p.id, title: p.title, sub: 'Plano', icon: 'target', to: `/app/planos/${p.id}` });
+      }
+      for (const g of this.listGifts(coupleId, email)) {
+        if (hit(g.title)) out.push({ type: 'data', id: g.id, title: g.title, sub: g.date || 'Wishlist', icon: 'gift', to: `/app/presentes/${g.id}` });
+      }
+      return out.slice(0, 20);
+    },
+
+    /* ── Primeiro dia: espaço nasce com conteúdo, nunca vazio ── */
+    seedCouple(coupleId, email, goal, milestoneDate) {
+      const created = { lists: 0, events: 0, plans: 0 };
+      // Aniversário do marco: próxima ocorrência da data escolhida no Começar.
+      if (/^\d{4}-\d{2}-\d{2}$/.test(milestoneDate || '')) {
+        const today = new Date();
+        const [, mm, dd] = milestoneDate.split('-');
+        let year = today.getFullYear();
+        if (`${year}-${mm}-${dd}` < today.toISOString().slice(0, 10)) year += 1;
+        this.createEvent(coupleId, email, { title: 'Nosso aniversário 💛', date: `${year}-${mm}-${dd}`, notes: 'Criado do contador de dias — edite à vontade.' });
+        created.events++;
+      }
+      const seeds = {
+        rotina: () => {
+          this.addItem(coupleId, this.createList(coupleId, email, { title: 'Mercado', icon: 'shopping' }).id, 'Café');
+          const casa = this.createList(coupleId, email, { title: 'Casa da gente', icon: 'home' });
+          this.addItem(coupleId, casa.id, 'Pagar as contas do mês');
+          this.addItem(coupleId, casa.id, 'Faxina do fim de semana');
+          created.lists += 2;
+        },
+        conexao: () => {
+          const l = this.createList(coupleId, email, { title: 'Pra fazer juntos', icon: 'together' });
+          this.addItem(coupleId, l.id, 'Cozinhar uma receita nova');
+          this.addItem(coupleId, l.id, 'Maratonar aquela série');
+          created.lists++;
+        },
+        datas: () => {
+          const l = this.createList(coupleId, email, { title: 'Ideias de presente', icon: 'gift', kind: 'wishlist' });
+          this.addItem(coupleId, l.id, 'Anotar o que ele(a) comentou que queria');
+          created.lists++;
+        },
+        planejar: () => {
+          this.createPlan(coupleId, email, { title: 'Nossa próxima viagem', category: 'viagem', steps: ['Escolher o destino', 'Definir as datas', 'Guardar um valor por mês'] });
+          created.plans++;
+        },
+      };
+      (seeds[goal] || seeds.rotina)();
+      return created;
+    },
+
+    /* ── Feed de calendário (.ics) ── */
+    calendarToken(coupleId) {
+      const row = sqlite.prepare('SELECT calendar_token FROM couples WHERE id=?').get(coupleId);
+      if (row?.calendar_token) return row.calendar_token;
+      const token = crypto.randomBytes(18).toString('base64url');
+      sqlite.prepare('UPDATE couples SET calendar_token=? WHERE id=?').run(token, coupleId);
+      return token;
+    },
+    coupleByCalendarToken(token) {
+      if (!token) return null;
+      return sqlite.prepare('SELECT * FROM couples WHERE calendar_token=?').get(String(token)) || null;
+    },
+
+    /* ── Emails automáticos ── */
+    allCouples() {
+      return sqlite.prepare('SELECT * FROM couples').all().map((c) => ({
+        ...c,
+        members: sqlite.prepare(`SELECT cm.user_email AS email, u.name FROM couple_members cm
+          JOIN users u ON u.email=cm.user_email WHERE cm.couple_id=?`).all(c.id),
+      }));
+    },
+    eventsOnDate(coupleId, date) {
+      return sqlite.prepare(`SELECT * FROM events WHERE couple_id=? AND date=? AND shared=1
+        ORDER BY CASE WHEN time='' THEN 1 ELSE 0 END, time`).all(coupleId, date);
+    },
+    wasNotified(coupleId, kind, key) {
+      return !!sqlite.prepare('SELECT 1 FROM notifications_sent WHERE couple_id=? AND kind=? AND key=?').get(coupleId, kind, key);
+    },
+    markNotified(coupleId, kind, key) {
+      sqlite.prepare('INSERT OR IGNORE INTO notifications_sent (couple_id, kind, key) VALUES (?, ?, ?)').run(coupleId, kind, key);
+    },
+
+    /* ── Dados do casal: exportar, sair, excluir ── */
+    exportCouple(coupleId) {
+      const all = (sql) => sqlite.prepare(sql).all(coupleId);
+      const lists = all('SELECT * FROM lists WHERE couple_id=?').map((l) => ({
+        ...l, items: sqlite.prepare('SELECT * FROM list_items WHERE list_id=? ORDER BY position, id').all(l.id),
+      }));
+      const plans = all('SELECT * FROM plans WHERE couple_id=?').map((p) => ({
+        ...p,
+        steps: sqlite.prepare('SELECT * FROM plan_steps WHERE plan_id=? ORDER BY position, id').all(p.id),
+        attachments: sqlite.prepare('SELECT url FROM plan_attachments WHERE plan_id=?').all(p.id).map((a) => a.url),
+      }));
+      return {
+        exportedAt: new Date().toISOString(),
+        couple: sqlite.prepare('SELECT id, name, milestone_date, milestone_label, created_at FROM couples WHERE id=?').get(coupleId),
+        members: sqlite.prepare('SELECT cm.user_email, cm.role, cm.joined_at, u.name FROM couple_members cm JOIN users u ON u.email=cm.user_email WHERE cm.couple_id=?').all(coupleId),
+        events: all('SELECT * FROM events WHERE couple_id=?'),
+        lists,
+        moments: this.listMoments(coupleId),
+        checkins: all('SELECT * FROM checkins WHERE couple_id=?'),
+        goals: all('SELECT * FROM goals WHERE couple_id=?'),
+        messages: all('SELECT * FROM messages WHERE couple_id=?'),
+        plans,
+        gifts: this.listGifts(coupleId),
+        timeCapsules: all('SELECT * FROM time_capsules WHERE couple_id=?'),
+        albums: all('SELECT * FROM albums WHERE couple_id=?'),
+        intimacySessions: all('SELECT * FROM intimacy_sessions WHERE couple_id=?'),
+        savedDateIdeas: all('SELECT * FROM saved_date_ideas WHERE couple_id=?'),
+      };
+    },
+    // Sair do espaço: a pessoa some do casal, o conteúdo fica com quem ficou.
+    // Se era a última, o espaço inteiro é apagado (não sobra órfão).
+    leaveCouple(coupleId, email) {
+      const member = sqlite.prepare('SELECT 1 FROM couple_members WHERE couple_id=? AND user_email=?').get(coupleId, email);
+      if (!member) return false;
+      sqlite.prepare('DELETE FROM couple_members WHERE couple_id=? AND user_email=?').run(coupleId, email);
+      const left = sqlite.prepare('SELECT COUNT(*) c FROM couple_members WHERE couple_id=?').get(coupleId).c;
+      if (left === 0) this.deleteCouple(coupleId);
+      return true;
+    },
+    deleteCouple(coupleId) {
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare('DELETE FROM list_items WHERE list_id IN (SELECT id FROM lists WHERE couple_id=?)').run(coupleId);
+        sqlite.prepare('DELETE FROM moment_photos WHERE moment_id IN (SELECT id FROM moments WHERE couple_id=?)').run(coupleId);
+        sqlite.prepare('DELETE FROM plan_steps WHERE plan_id IN (SELECT id FROM plans WHERE couple_id=?)').run(coupleId);
+        sqlite.prepare('DELETE FROM plan_attachments WHERE plan_id IN (SELECT id FROM plans WHERE couple_id=?)').run(coupleId);
+        for (const t of ['events', 'lists', 'moments', 'checkins', 'goals', 'messages', 'plans', 'gifts',
+          'saved_date_ideas', 'quiz_answers', 'time_capsules', 'albums', 'intimacy_sessions', 'subscriptions',
+          'message_reads', 'notifications_sent', 'invites', 'couple_members']) {
+          sqlite.prepare(`DELETE FROM ${t} WHERE couple_id=?`).run(coupleId);
+        }
+        sqlite.prepare('DELETE FROM couples WHERE id=?').run(coupleId);
+      });
+      tx();
+      return true;
+    },
+
     getSubscription(coupleId) {
       const row = sqlite.prepare('SELECT * FROM subscriptions WHERE couple_id=?').get(coupleId);
       if (row) return { ...row, entitlements: parseJson(row.entitlements, ['free']) };

@@ -16,6 +16,7 @@ async function withCouple() {
   await request(app).post('/api/couples').set('Cookie', cookie).send({
     name: 'Nos',
     milestoneDate: '2024-01-01',
+    seed: false,
   });
   return cookie;
 }
@@ -141,7 +142,7 @@ describe('backends do prototipo', () => {
 // Cria um casal com os dois membros (criador + parceiro) via convite.
 async function coupleWithPartner() {
   const a = await login(`ca${seq++}@b.com`);
-  const created = await request(app).post('/api/couples').set('Cookie', a).send({ name: 'Dois', milestoneDate: '2024-01-01' });
+  const created = await request(app).post('/api/couples').set('Cookie', a).send({ name: 'Dois', milestoneDate: '2024-01-01', seed: false });
   const coupleId = created.body.couple.id;
   const inv = await request(app).post(`/api/couples/${coupleId}/invites`).set('Cookie', a);
   const code = inv.body.invite.code;

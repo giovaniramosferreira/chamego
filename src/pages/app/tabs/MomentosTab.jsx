@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, apiUpload } from '../../../lib/api.js';
-import { Card, Row, Sheet, Fab, Field, Btn, Spinner, EmptyState } from '../../../ui/kit.jsx';
+import { useDataRefresh } from '../../../lib/refresh.js';
+import { useToast } from '../../../lib/toast-context.js';
+import { Card, Row, Sheet, Field, Btn, Spinner, EmptyState, RowList } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 const todayISO = () => new Date().toLocaleDateString('en-CA');
@@ -12,16 +14,23 @@ function fmt(iso) {
 
 export default function MomentosTab() {
   const nav = useNavigate();
+  const { undoable } = useToast();
   const [moments, setMoments] = useState(null);
   const [sheet, setSheet] = useState(null); // null | 'new' | moment
 
-  const load = () => api('/api/moments').then((d) => setMoments(d.moments));
-  useEffect(() => { load(); }, []);
+  const load = useCallback(() => { api('/api/moments').then((d) => setMoments(d.moments)).catch(() => setMoments([])); }, []);
+  useEffect(() => { load(); }, [load]);
+  useDataRefresh(load);
 
-  async function remove(id) {
-    if (!confirm('Excluir este momento?')) return;
-    await api(`/api/moments/${id}`, { method: 'DELETE' });
-    load();
+  // Sem confirm() do navegador: some da linha do tempo e dá pra desfazer.
+  function remove(moment) {
+    const before = moments;
+    undoable({
+      message: 'Momento excluído',
+      apply: () => setMoments((list) => (list || []).filter((m) => m.id !== moment.id)),
+      revert: () => setMoments(before),
+      commit: () => api(`/api/moments/${moment.id}`, { method: 'DELETE' }),
+    });
   }
 
   return (
@@ -50,7 +59,7 @@ export default function MomentosTab() {
                   <span className="text-xs font-semibold tracking-wide uppercase text-ink-3">{fmt(m.date)}</span>
                   <div className="flex gap-1">
                     <button onClick={() => setSheet(m)} aria-label="Editar" className="text-ink-3 hover:text-accent-press p-1"><Icon name="edit" size={15} /></button>
-                    <button onClick={() => remove(m.id)} aria-label="Excluir" className="text-ink-3 hover:text-accent-press p-1"><Icon name="trash" size={15} /></button>
+                    <button onClick={() => remove(m)} aria-label="Excluir" className="text-ink-3 hover:text-accent-press p-1"><Icon name="trash" size={15} /></button>
                   </div>
                 </div>
                 {m.text && <p className="text-[1.05rem] leading-snug mb-2">{m.text}</p>}
@@ -61,7 +70,9 @@ export default function MomentosTab() {
         </div>
       )}
 
-      <Fab onClick={() => setSheet('new')} label="Novo momento" />
+      <RowList className="mt-6">
+        <Row icon="plus" title="Guardar um momento" sub="Uma frase, uma foto — o que valeu o dia" onClick={() => setSheet('new')} />
+      </RowList>
 
       {sheet && (
         <MomentSheet moment={sheet === 'new' ? null : sheet} onClose={() => setSheet(null)} onSaved={() => { setSheet(null); load(); }} />
