@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
+import { useDataRefresh } from '../../../lib/refresh.js';
 import { useSession } from '../../../lib/session-context.js';
-import { Card, Row, Sheet, Fab, Field, Btn, Chip, Spinner, EmptyState } from '../../../ui/kit.jsx';
+import { useToast } from '../../../lib/toast-context.js';
+import { Card, Sheet, Field, Btn, Chip, Spinner, EmptyState } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 const DOW = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
@@ -51,33 +53,50 @@ function EventForm({ initial, onSave, onClose, saving }) {
 export default function AgendaTab() {
   const nav = useNavigate();
   const { user } = useSession();
+  const { toast, undoable } = useToast();
   const [events, setEvents] = useState(null);
+  const [dates, setDates] = useState([]);
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [selected, setSelected] = useState(null);
   const [sheet, setSheet] = useState(null); // null | {} (new) | event (edit)
   const [saving, setSaving] = useState(false);
+  const [calUrl, setCalUrl] = useState('');
 
-  const [dates, setDates] = useState([]);
-  const load = () => api('/api/events').then((d) => setEvents(d.events));
-  useEffect(() => {
-    load();
-    const t = todayISO();
+  const load = useCallback(() => {
+    api('/api/events').then((d) => setEvents(d.events)).catch(() => setEvents([]));
+    // Datas importantes moram aqui também: uma data é uma data, no calendário.
     api('/api/gifts').then((d) => setDates(
-      (d.gifts || []).filter((g) => g.kind !== 'wishlist' && g.date && g.date >= t).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3)
+      (d.gifts || []).filter((g) => g.kind !== 'wishlist' && g.date),
     )).catch(() => {});
   }, []);
+  useEffect(() => { load(); }, [load]);
+  useDataRefresh(load);
+
+  // Datas viram itens do mesmo calendário (marcador + linha), sem bloco à parte.
+  const dateEntries = useMemo(() => dates.map((g) => ({
+    id: `gift-${g.id}`,
+    kind: 'data',
+    giftId: g.id,
+    title: g.title,
+    date: g.date,
+    time: '',
+    shared: 1,
+  })), [dates]);
+
+  const all = useMemo(() => [...(events || []), ...dateEntries]
+    .sort((a, b) => a.date.localeCompare(b.date) || String(a.time).localeCompare(String(b.time))), [events, dateEntries]);
 
   const byDate = useMemo(() => {
     const map = {};
-    (events || []).forEach((e) => { (map[e.date] ||= []).push(e); });
+    all.forEach((e) => { (map[e.date] ||= []).push(e); });
     return map;
-  }, [events]);
+  }, [all]);
 
   const upcoming = useMemo(() => {
     const t = todayISO();
-    const list = (events || []).filter((e) => e.date >= t);
-    return selected ? (byDate[selected] || []) : list.slice(0, 12);
-  }, [events, selected, byDate]);
+    if (selected) return byDate[selected] || [];
+    return all.filter((e) => e.date >= t).slice(0, 12);
+  }, [all, selected, byDate]);
 
   async function save(f) {
     setSaving(true);
@@ -85,15 +104,34 @@ export default function AgendaTab() {
       const body = { title: f.title.trim(), date: f.date, time: f.time || '', location: f.location, notes: f.notes, shared: f.shared };
       if (sheet?.id) await api(`/api/events/${sheet.id}`, { method: 'PATCH', body });
       else await api('/api/events', { method: 'POST', body });
-      await load();
+      load();
       setSheet(null);
+      toast(sheet?.id ? 'Evento atualizado ✓' : 'Evento na agenda ✓');
+    } catch (e) {
+      toast(e.message, { tone: 'error' });
     } finally { setSaving(false); }
   }
-  async function remove(id) {
-    if (!confirm('Excluir este evento?')) return;
-    await api(`/api/events/${id}`, { method: 'DELETE' });
+
+  // Excluir some na hora e vai pro servidor depois — dá tempo de desfazer.
+  function remove(ev) {
     setSheet(null);
-    load();
+    undoable({
+      message: `“${ev.title}” excluído`,
+      apply: () => setEvents((list) => (list || []).filter((e) => e.id !== ev.id)),
+      revert: () => setEvents((list) => [...(list || []), ev].sort((a, b) => a.date.localeCompare(b.date))),
+      commit: () => api(`/api/events/${ev.id}`, { method: 'DELETE' }),
+    });
+  }
+
+  async function subscribe() {
+    try {
+      const { url } = calUrl ? { url: calUrl } : await api('/api/calendar/token');
+      setCalUrl(url);
+      await navigator.clipboard.writeText(url).catch(() => {});
+      toast('Link do calendário copiado — assine no Google/Apple Agenda.');
+    } catch (e) {
+      toast(e.message, { tone: 'error' });
+    }
   }
 
   const cells = monthGrid(cursor.y, cursor.m);
@@ -103,21 +141,10 @@ export default function AgendaTab() {
     <div>
       <div className="flex items-end justify-between pt-6 pb-3">
         <h1 className="font-display text-[1.9rem]">Agenda</h1>
+        <button onClick={subscribe} className="flex items-center gap-1.5 text-sm text-accent font-medium py-2" aria-label="Assinar calendário">
+          <Icon name="link" size={15} /> No meu calendário
+        </button>
       </div>
-
-      {dates.length > 0 && (
-        <>
-          <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Datas importantes</p>
-          <Card className="!p-0 mb-4">
-            {dates.map((g) => {
-              const d = daysUntil(g.date);
-              return <Row key={g.id} icon="gift" title={g.title} sub={new Date(`${g.date}T00:00:00`).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })}
-                onClick={() => nav(`/app/presentes/${g.id}`)}
-                right={<span className="text-xs font-semibold text-accent-press bg-accent-soft rounded-full px-2.5 py-1">{d <= 0 ? 'hoje' : `${d}d`}</span>} />;
-            })}
-          </Card>
-        </>
-      )}
 
       <Card className="mb-5 !p-4">
         <div className="flex items-center justify-between mb-3">
@@ -147,7 +174,7 @@ export default function AgendaTab() {
 
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3">
-          {selected ? fmtLong(selected) : 'Próximos eventos'}
+          {selected ? fmtLong(selected) : 'Próximos'}
         </p>
         {selected && <button onClick={() => setSelected(null)} className="text-sm text-accent">ver todos</button>}
       </div>
@@ -161,34 +188,40 @@ export default function AgendaTab() {
       ) : (
         <div className="space-y-2.5">
           {upcoming.map((e) => (
-            <button key={e.id} onClick={() => setSheet(e)} className="w-full text-left flex gap-3 items-stretch">
+            <button key={e.id} onClick={() => (e.kind === 'data' ? nav(`/app/presentes/${e.giftId}`) : setSheet(e))} className="w-full text-left flex gap-3 items-stretch">
               <div className="flex-none w-16 pt-0.5 text-right">
-                <div className="text-sm font-semibold text-accent">{e.time || '—'}</div>
+                <div className="text-sm font-semibold text-accent">{e.kind === 'data' ? `${Math.max(0, daysUntil(e.date))}d` : (e.time || '—')}</div>
                 {!selected && <div className="text-[.7rem] text-ink-3 capitalize">{fmtLong(e.date)}</div>}
               </div>
               <div className="w-0.5 rounded bg-[var(--accent-line)]" />
               <Card className="flex-1 !p-3.5">
                 <div className="font-medium text-[.95rem] flex items-center gap-1.5">
+                  {e.kind === 'data' && <Icon name="gift" size={14} className="text-accent-press" />}
                   {e.title}
                   {!e.shared && <span className="text-[.65rem] px-1.5 py-0.5 rounded-full bg-tint text-ink-2">só você</span>}
                 </div>
                 {(e.location || e.notes) && <div className="text-sm text-ink-2 mt-0.5">{[e.location, e.notes].filter(Boolean).join(' · ')}</div>}
-                <div className="text-[.7rem] text-ink-3 mt-1">{e.created_by === user.email ? 'você' : 'seu par'}</div>
+                <div className="text-[.7rem] text-ink-3 mt-1">
+                  {e.kind === 'data' ? 'data importante' : (e.created_by === user.email ? 'você' : 'seu par')}
+                </div>
               </Card>
             </button>
           ))}
         </div>
       )}
 
-      <Fab onClick={() => setSheet({})} label="Novo evento" />
-
       {sheet && (
         <Sheet title={sheet.id ? 'Editar evento' : 'Novo evento'} onClose={() => setSheet(null)}>
           <EventForm initial={sheet.id ? sheet : { date: selected || todayISO() }} onSave={save} onClose={() => setSheet(null)} saving={saving} />
           {sheet.id && (
-            <button onClick={() => remove(sheet.id)} className="w-full mt-3 flex items-center justify-center gap-1.5 text-sm text-red-700/80 py-2">
-              <Icon name="trash" size={15} /> Excluir evento
-            </button>
+            <div className="flex flex-col gap-1 mt-3">
+              <a href={`/api/events/${sheet.id}/ics`} className="w-full flex items-center justify-center gap-1.5 text-sm text-accent py-2">
+                <Icon name="calendar" size={15} /> Adicionar ao meu calendário
+              </a>
+              <button onClick={() => remove(sheet)} className="w-full flex items-center justify-center gap-1.5 text-sm text-red-700/80 py-2">
+                <Icon name="trash" size={15} /> Excluir evento
+              </button>
+            </div>
           )}
         </Sheet>
       )}

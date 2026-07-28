@@ -1,43 +1,73 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
-import { AppHeader, Card, Spinner, Btn } from '../../../ui/kit.jsx';
+import { useToast } from '../../../lib/toast-context.js';
+import { AppHeader, Card, Spinner, Btn, CheckRow } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 export default function ListaDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { toast, undoable } = useToast();
   const [list, setList] = useState(null);
   const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
     api(`/api/lists/${id}`).then((d) => setList(d.list)).catch(() => nav('/app/listas'));
   }, [id, nav]);
 
+  // Tudo otimista: marcar e adicionar respondem na hora e só depois vão ao
+  // servidor. Se der erro, o estado volta e o aviso aparece.
   async function addItem(e) {
     e.preventDefault();
-    if (!text.trim()) return;
-    setBusy(true);
+    const value = text.trim();
+    if (!value) return;
+    const temp = { id: `tmp-${Date.now()}`, text: value, done: 0, pending: true };
+    setList((l) => ({ ...l, items: [...l.items, temp] }));
+    setText('');
+    inputRef.current?.focus();
     try {
-      const { list } = await api(`/api/lists/${id}/items`, { method: 'POST', body: { text: text.trim() } });
-      setList(list); setText('');
-      inputRef.current?.focus();
-    } finally { setBusy(false); }
+      const { list: fresh } = await api(`/api/lists/${id}/items`, { method: 'POST', body: { text: value } });
+      setList(fresh);
+    } catch (err) {
+      setList((l) => ({ ...l, items: l.items.filter((i) => i.id !== temp.id) }));
+      setText(value);
+      toast(err.message, { tone: 'error' });
+    }
   }
+
   async function toggle(item) {
-    const { list } = await api(`/api/items/${item.id}`, { method: 'PATCH', body: { done: !item.done } });
-    setList(list);
+    if (String(item.id).startsWith('tmp-')) return;
+    const before = list;
+    setList((l) => ({ ...l, items: l.items.map((i) => (i.id === item.id ? { ...i, done: item.done ? 0 : 1 } : i)) }));
+    try {
+      const { list: fresh } = await api(`/api/items/${item.id}`, { method: 'PATCH', body: { done: !item.done } });
+      setList(fresh);
+    } catch (err) {
+      setList(before);
+      toast(err.message, { tone: 'error' });
+    }
   }
-  async function del(item) {
-    const { list } = await api(`/api/items/${item.id}`, { method: 'DELETE' });
-    setList(list);
+
+  function del(item) {
+    if (String(item.id).startsWith('tmp-')) return;
+    const before = list;
+    undoable({
+      message: `“${item.text}” removido`,
+      apply: () => setList((l) => ({ ...l, items: l.items.filter((i) => i.id !== item.id) })),
+      revert: () => setList(before),
+      commit: () => api(`/api/items/${item.id}`, { method: 'DELETE' }),
+    });
   }
-  async function removeList() {
-    if (!confirm('Excluir a lista inteira?')) return;
-    await api(`/api/lists/${id}`, { method: 'DELETE' });
-    nav('/app/listas');
+
+  function removeList() {
+    undoable({
+      message: `Lista “${list.title}” excluída`,
+      apply: () => nav('/app/listas'),
+      revert: () => nav(`/app/listas/${id}`),
+      commit: () => api(`/api/lists/${id}`, { method: 'DELETE' }),
+    });
   }
 
   if (!list) return <div className="py-16 text-center"><Spinner /></div>;
@@ -57,15 +87,8 @@ export default function ListaDetail() {
       <div className="space-y-2 mb-4">
         {list.items.length === 0 && <Card className="text-center text-ink-2 text-sm py-6">Adicione o primeiro item abaixo 👇</Card>}
         {list.items.map((item) => (
-          <Card key={item.id} className="!p-0">
-            <div className="flex items-center gap-3 px-4 py-3">
-              <button onClick={() => toggle(item)} aria-label={item.done ? 'Desmarcar' : 'Concluir'}
-                className={`flex-none w-6 h-6 rounded-full grid place-items-center transition-all ${item.done ? 'bg-accent text-accent-ink' : 'shadow-[inset_0_0_0_1.5px_var(--line-2)]'}`}>
-                {item.done && <Icon name="check" size={14} />}
-              </button>
-              <span className={`flex-1 text-[.95rem] ${item.done ? 'line-through text-ink-3' : 'text-ink'}`}>{item.text}</span>
-              <button onClick={() => del(item)} aria-label="Remover" className="flex-none text-ink-3 hover:text-accent-press"><Icon name="close" size={16} /></button>
-            </div>
+          <Card key={item.id} className={`!p-0 ${item.pending ? 'opacity-60' : ''}`}>
+            <CheckRow done={!!item.done} text={item.text} onToggle={() => toggle(item)} onRemove={() => del(item)} />
           </Card>
         ))}
       </div>
@@ -75,7 +98,7 @@ export default function ListaDetail() {
           <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)}
             placeholder={isWishlist ? 'Adicionar desejo…' : 'Adicionar item…'}
             className="flex-1 bg-transparent px-3 py-2 outline-none text-ink placeholder:text-ink-3" />
-          <Btn type="submit" disabled={busy || !text.trim()} className="!px-4 !py-2">{busy ? <Spinner /> : <Icon name="plus" size={18} />}</Btn>
+          <Btn type="submit" disabled={!text.trim()} className="!px-4 !py-2"><Icon name="plus" size={18} /></Btn>
         </div>
       </form>
     </div>

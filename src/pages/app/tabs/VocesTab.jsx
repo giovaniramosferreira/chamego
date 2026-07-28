@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
 import { useSession } from '../../../lib/session-context.js';
-import { Card, RowList, Row, Sheet, Field, Btn, Spinner } from '../../../ui/kit.jsx';
+import { useToast } from '../../../lib/toast-context.js';
+import { Card, RowList, Row, Sheet, Field, Btn, Spinner, LockedRow } from '../../../ui/kit.jsx';
 
 const MOODS = [['😀', 'ótimo'], ['🙂', 'bem'], ['😐', 'neutro'], ['😔', 'pra baixo'], ['😴', 'cansado'], ['🥰', 'apaixonado']];
 const moodEmoji = (m) => MOODS.find((x) => x[1] === m)?.[0] || '💛';
@@ -36,12 +37,28 @@ export default function VocesTab() {
         </Card>
       )}
 
-      {/* 2-4. Blocos do casal */}
+      {/* 2. O dia a dia da dupla */}
       <RowList className="mb-4 mt-1">
         <Row icon="target" title="Planos & metas" sub="Sonhos grandes e metas de vocês" onClick={() => nav('/app/planos')} />
         <Row icon="gift" title="Datas & presentes" sub="Aniversários, datas e ideias" onClick={() => nav('/app/presentes')} />
-        <Row icon="chat" title="Chat privado" sub={partner ? 'Conversem só entre vocês' : 'Convide seu par para conversar'}
-          onClick={() => (partner ? nav('/app/voces/chat') : nav('/app/config'))} />
+        {partner
+          ? <Row icon="chat" title="Chat privado" sub="Conversem só entre vocês" onClick={() => nav('/app/voces/chat')} />
+          : <LockedRow icon="chat" title="Chat privado" reason="Libera quando seu par entrar" onClick={() => nav('/app/config')} />}
+      </RowList>
+
+      {/* 3. Descobrir: o que existia sem porta de entrada volta a ter uma */}
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Descobrir</p>
+      <RowList className="mb-4">
+        {partner
+          ? <Row icon="heart" title="Quiz do casal" sub="Vejam o quanto combinam" onClick={() => nav('/app/quiz')} />
+          : <LockedRow icon="heart" title="Quiz do casal" reason="Precisa dos dois respondendo" onClick={() => nav('/app/config')} />}
+        <Row icon="star" title="Conquistas" sub="Os marcos de vocês" onClick={() => nav('/app/conquistas')} />
+        <Row icon="calendar" title="Resumo da semana" sub="A semana em números e destaques" onClick={() => nav('/app/resumo')} />
+        <Row icon="bell" title="Lembretes de carinho" sub="Sugestões leves, sem cobrança" onClick={() => nav('/app/lembretes')} />
+        {partner
+          ? <Row icon="shield" title="Conexão" sub="Conversas guiadas, espaço privado" onClick={() => nav('/app/intimidade')} />
+          : <LockedRow icon="shield" title="Conexão" reason="Conversas guiadas a dois" onClick={() => nav('/app/config')} />}
+        <Row icon="globe" title="Tudo do Chamego" sub="Ver todos os recursos" onClick={() => nav('/app/mais')} />
       </RowList>
 
       {checkin && <CheckinSheet current={data?.myCheckin} onClose={() => setCheckin(false)} onDone={() => { setCheckin(false); load(); }} />}
@@ -50,14 +67,20 @@ export default function VocesTab() {
 }
 
 function CheckinSheet({ current, onClose, onDone }) {
+  const { toast } = useToast();
   const [mood, setMood] = useState(current?.mood || '');
   const [note, setNote] = useState(current?.note || '');
   const [saving, setSaving] = useState(false);
   async function save() {
     if (!mood) return;
     setSaving(true);
-    try { await api('/api/checkins', { method: 'POST', body: { mood, note } }); onDone(); }
-    finally { setSaving(false); }
+    try {
+      await api('/api/checkins', { method: 'POST', body: { mood, note } });
+      toast('Check-in de hoje registrado 💛');
+      onDone();
+    } catch (e) {
+      toast(e.message, { tone: 'error' });
+    } finally { setSaving(false); }
   }
   return (
     <Sheet title="Check-in de hoje" onClose={onClose}>

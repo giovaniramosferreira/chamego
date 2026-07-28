@@ -29,13 +29,29 @@ Email com link de uso único (15 min) que autentica sem senha.
 _Avoid_: código OTP, senha
 
 **Começar (fluxo)**:
-Sequência obrigatória pós-primeiro-login: Termos → Onboarding → criação do
-Espaço do Casal. Guardada pela rota `/app/comecar`.
+Sequência pós-primeiro-login: 1 pergunta de objetivo → criação do Espaço do
+Casal (data opcional) → convite. Guardada pela rota `/app/comecar`. Os termos
+são aceitos no "continuar" da entrada e registrados na primeira passagem.
 _Avoid_: cadastro, wizard (termo do produto antigo)
 
 **Onboarding**:
-3 perguntas (objetivo, estágio do relacionamento, sozinho/convidar) que
-personalizam o início. Persistido em `users.onboarding` (JSON).
+1 pergunta (objetivo) que define o conteúdo inicial do espaço via
+`db.seedCouple`. Persistido em `users.onboarding` (JSON); a fase do
+relacionamento é opcional e vive em Configurações.
+
+**Adicionar (o "+" global)**:
+Botão único no shell das 5 abas. Interpreta texto natural
+(`src/lib/quick-parse.js`) e cria evento, item de lista, momento, data
+importante ou plano; o mesmo campo busca (`GET /api/search`).
+_Avoid_: FAB por aba (era preciso acertar a aba antes de registrar)
+
+**Tudo do Chamego** (`/app/mais`):
+Hub com todos os recursos agrupados por intenção. Regra do produto: nenhum
+recurso existe sem porta de entrada na interface.
+
+**Desfazer**:
+Exclusão é otimista e reversível por 5s (`ToastProvider`), no lugar de
+`confirm()` do navegador.
 
 **Contador de Dias**:
 Dias desde a data-marco (`milestone_date`) do espaço — destaque do Início.
@@ -45,11 +61,15 @@ Avatar do usuário (`users.picture`) — vem do Google no login ou upload própr
 via `POST /api/me/avatar` (multer, disco). Aparece no header do Início e em Config.
 
 **As 5 abas** (todas funcionais):
-- **Início**: saudação, contador de dias, próximo evento e nudge de check-in.
+- **Início**: saudação, o par (humor do dia ou cutucão), "Pra hoje" sem o que já
+  foi resolvido, card de descoberta rotativo e contador de dias.
 - **Agenda**: eventos do casal (`events`) — título, data, hora, local, notas,
-  compartilhado vs "só você". Visão de mês com marcadores + próximos eventos.
-- **Listas**: `lists` (compartilhada/individual/wishlist) + `list_items`
-  (concluir, remover, barra de progresso). Ponto de entrada para **Planos**.
+  compartilhado vs "só você". Visão de mês com marcadores + próximos, incluindo
+  as **datas importantes** (`gifts` com data) no mesmo calendário. Exporta `.ics`
+  por evento e feed assinável por token.
+- **Listas**: `lists` (compartilhada/individual) + `list_items` (concluir,
+  remover, barra de progresso), com atualização otimista. Wishlist mora só em
+  Datas & presentes; listas `kind='wishlist'` antigas seguem funcionando.
 - **Momentos**: linha do tempo `moments` com texto e **1 foto** por momento
   (`moment_photos`, upload via multer para `DATA_DIR/uploads`, servido em
   `/uploads`). Momento editável: trocar/remover foto e editar texto/data
@@ -118,3 +138,19 @@ Espaço do Casal. Tabelas: `plans`, `plan_steps`, `plan_attachments`, `gifts`,
 - Permissões (notificações/calendário/fotos) fora do onboarding — pedidas no primeiro uso real
 - Chat do casal por polling (4s), não websockets — volume baixo não justifica infra em tempo real
 - Fotos dos Momentos no disco persistente do Render (`/var/data/uploads`), não em storage externo
+
+## Melhorias de uso (jul/2026)
+
+Ver `docs/superpowers/specs/2026-07-28-dez-melhorias-uso.md`. Resumo do que
+mudou de estrutura:
+
+- **PWA**: `manifest.webmanifest` + `sw.js` + ícones; faixa de instalação.
+- **Lembretes por email** (`backend/notifier.js`): véspera de evento e resumo de
+  domingo, idempotentes (`notifications_sent`), preferências em
+  `couples.reminder_prefs.email`.
+- **Não lidas do chat**: `message_reads` + `GET /api/badges` alimentam o badge
+  da tab bar.
+- **Dados do casal**: `GET /api/export`, `POST /api/couples/:id/leave` e
+  `DELETE /api/couples/:id` (confirmação digitada) — o que os Termos prometem.
+- **Erros de rede** aparecem como faixa (`ConnectionBanner`), não como lista
+  vazia.

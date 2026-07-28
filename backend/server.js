@@ -6,7 +6,9 @@ import multer from 'multer';
 import { fileURLToPath } from 'url';
 import { db } from './db.js';
 import { verifyGoogleToken, createSession, sessionFromRequest, normalizeEmail, SESSION_COOKIE, SESSION_MAX_AGE_MS } from './auth.js';
-import { sendMagicLink } from './mailer.js';
+import { sendMagicLink, sendInvite, sendPartnerJoined } from './mailer.js';
+import { buildIcs } from './ics.js';
+import { startNotifier } from './notifier.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -155,20 +157,57 @@ app.post('/api/me/avatar', requireAuth, upload.single('avatar'), (req, res) => {
   res.json({ picture: user.picture });
 });
 
+/* ── Escopo do casal ─────────────────────────────────────────────────────── */
+
+// Deriva o espaço do casal a partir da sessão; todo conteúdo é escopado por ele.
+function requireCouple(req, res, next) {
+  const couple = db.getCoupleByUser(req.user.email);
+  if (!couple) return res.status(409).json({ error: 'Crie seu espaço primeiro' });
+  req.couple = couple;
+  next();
+}
+const withCouple = [requireAuth, requireCouple];
+
+const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+const isTime = (v) => v === '' || v === undefined || /^\d{2}:\d{2}$/.test(v);
+
 /* ── Espaço do casal ─────────────────────────────────────────────────────── */
 
+// A data do contador é opcional: quem não lembra segue em frente e define depois.
+// `seed` é a resposta do onboarding — o espaço nasce com conteúdo, nunca vazio.
 app.post('/api/couples', requireAuth, (req, res) => {
-  const { name, milestoneDate, milestoneLabel } = req.body || {};
-  if (!name?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(milestoneDate || '')) {
-    return res.status(400).json({ error: 'Informe o nome do espaço e a data' });
-  }
+  const { name, milestoneDate, milestoneLabel, seed } = req.body || {};
+  if (!name?.trim()) return res.status(400).json({ error: 'Informe o nome do espaço' });
+  const date = milestoneDate ? String(milestoneDate) : '';
+  if (date && !isDate(date)) return res.status(400).json({ error: 'Data inválida' });
   db.upsertUser({ email: req.user.email });
+  let couple;
   try {
-    db.createCouple({ name: name.trim().slice(0, 80), milestoneDate, milestoneLabel: milestoneLabel || '', creatorEmail: req.user.email });
+    couple = db.createCouple({ name: name.trim().slice(0, 80), milestoneDate: date, milestoneLabel: milestoneLabel || '', creatorEmail: req.user.email });
   } catch {
     return res.status(409).json({ error: 'Você já tem um espaço' });
   }
+  if (seed !== false) db.seedCouple(couple.id, req.user.email, String(seed || 'rotina'), date);
   res.json({ couple: db.getCoupleByUser(req.user.email) });
+});
+
+// Exportar tudo e apagar tudo — o que os Termos prometem, agora existe.
+app.get('/api/export', withCouple, (req, res) => {
+  res.setHeader('Content-Disposition', `attachment; filename="chamego-${req.couple.id}.json"`);
+  res.json(db.exportCouple(req.couple.id));
+});
+app.post('/api/couples/:id/leave', withCouple, (req, res) => {
+  if (req.couple.id !== Number(req.params.id)) return res.status(404).json({ error: 'Espaço não encontrado' });
+  db.leaveCouple(req.couple.id, req.user.email);
+  res.json({ ok: true });
+});
+app.delete('/api/couples/:id', withCouple, (req, res) => {
+  if (req.couple.id !== Number(req.params.id)) return res.status(404).json({ error: 'Espaço não encontrado' });
+  if (String(req.body?.confirm || '').trim().toLowerCase() !== 'excluir') {
+    return res.status(400).json({ error: 'Digite EXCLUIR para confirmar' });
+  }
+  db.deleteCouple(req.couple.id);
+  res.json({ ok: true });
 });
 
 app.patch('/api/couples/:id', requireAuth, (req, res) => {
@@ -190,13 +229,25 @@ function invitePreview(inv) {
   return { code: inv.code, coupleName: couple?.name || '', invitedBy: creator?.name || inv.created_by };
 }
 
-app.post('/api/couples/:id/invites', requireAuth, (req, res) => {
+app.post('/api/couples/:id/invites', requireAuth, async (req, res) => {
   const couple = db.getCoupleByUser(req.user.email);
   if (!couple || couple.id !== Number(req.params.id)) return res.status(404).json({ error: 'Espaço não encontrado' });
   if (couple.members.length >= 2) return res.status(409).json({ error: 'O espaço já tem os dois' });
   const invite = db.createInvite(couple.id, req.user.email);
   const base = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
-  res.json({ invite: { code: invite.code, url: `${base}/convite/${invite.code}` } });
+  const url = `${base}/convite/${invite.code}`;
+  // Com email, o convite chega sozinho — ninguém precisa copiar link nenhum.
+  let emailed = false;
+  const to = normalizeEmail(req.body?.email);
+  if (to && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    try {
+      const me = db.getUser(req.user.email);
+      emailed = await sendInvite({ to, fromName: me?.name || req.user.email, coupleName: couple.name, url, code: invite.code });
+    } catch (e) {
+      console.error('invite email error', e);
+    }
+  }
+  res.json({ invite: { code: invite.code, url }, emailed });
 });
 
 app.get('/api/invites/:code', (req, res) => {
@@ -206,26 +257,26 @@ app.get('/api/invites/:code', (req, res) => {
   res.json(invitePreview(inv));
 });
 
-app.post('/api/invites/:code/accept', requireAuth, (req, res) => {
+app.post('/api/invites/:code/accept', requireAuth, async (req, res) => {
   const inv = db.getInvite(req.params.code);
   if (!inv) return res.status(404).json({ error: 'Convite não encontrado' });
   if (inv.status !== 'pending') return res.status(410).json({ error: 'Este convite já foi usado' });
   db.upsertUser({ email: req.user.email });
   if (db.getCoupleByUser(req.user.email)) return res.status(409).json({ error: 'Você já tem um espaço' });
   if (!db.acceptInvite(inv.code, req.user.email)) return res.status(410).json({ error: 'Este convite já foi usado' });
-  res.json({ couple: db.getCoupleByUser(req.user.email) });
+  const couple = db.getCoupleByUser(req.user.email);
+  // Quem convidou fica sabendo sem precisar ficar conferindo o app.
+  try {
+    const me = db.getUser(req.user.email);
+    const base = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+    await sendPartnerJoined({ to: inv.created_by, partnerName: me?.name || req.user.email, coupleName: couple.name, url: `${base}/app` });
+  } catch (e) {
+    console.error('partner joined email error', e);
+  }
+  res.json({ couple });
 });
 
 /* ── Conteúdo das abas ───────────────────────────────────────────────────── */
-
-// Deriva o espaço do casal a partir da sessão; todo conteúdo é escopado por ele.
-function requireCouple(req, res, next) {
-  const couple = db.getCoupleByUser(req.user.email);
-  if (!couple) return res.status(409).json({ error: 'Crie seu espaço primeiro' });
-  req.couple = couple;
-  next();
-}
-const withCouple = [requireAuth, requireCouple];
 
 // Trava premium: bloqueia se a subscription do casal não tem o entitlement.
 // Reutilizável quando novas rotas premium chegarem (F2+). Hoje o quiz premium
@@ -233,9 +284,6 @@ const withCouple = [requireAuth, requireCouple];
 function hasEntitlement(coupleId, name) {
   return db.getSubscription(coupleId).entitlements.includes(name);
 }
-
-const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
-const isTime = (v) => v === '' || v === undefined || /^\d{2}:\d{2}$/.test(v);
 
 /* Agenda */
 app.get('/api/events', withCouple, (req, res) => {
@@ -369,6 +417,26 @@ app.get('/api/messages', withCouple, (req, res) => {
 app.post('/api/messages', withCouple, (req, res) => {
   if (!req.body?.text?.trim()) return res.status(400).json({ error: 'Mensagem vazia' });
   res.json({ message: db.createMessage(req.couple.id, req.user.email, req.body.text.trim()) });
+});
+// Leitura do chat: alimenta o badge de não lidas na tab bar.
+app.post('/api/messages/read', withCouple, (req, res) => {
+  res.json({ unread: db.markMessagesRead(req.couple.id, req.user.email, req.body?.lastId) });
+});
+
+// Estado leve pro shell do app (badge do chat e pendências de hoje).
+app.get('/api/badges', withCouple, (req, res) => {
+  const today = new Date().toLocaleDateString('en-CA');
+  const checkin = db.todayCheckins(req.couple.id).some((c) => c.user_email === req.user.email);
+  res.json({
+    unread: db.unreadCount(req.couple.id, req.user.email),
+    eventsToday: db.eventsOnDate(req.couple.id, today).length,
+    checkinDone: checkin,
+  });
+});
+
+// Busca única sobre tudo do casal — cresce junto com o conteúdo.
+app.get('/api/search', withCouple, (req, res) => {
+  res.json({ results: db.search(req.couple.id, req.query.q, req.user.email) });
 });
 
 /* ── Backends do prototipo completo ─────────────────────────────────────── */
@@ -533,6 +601,30 @@ app.post('/api/intimacy/unlock', withCouple, (req, res) => {
   res.json({ ok: true });
 });
 
+/* ── Calendário: o Chamego dentro do calendário que já é usado ───────────── */
+
+// Um evento avulso (download no navegador, com sessão).
+app.get('/api/events/:id/ics', withCouple, (req, res) => {
+  const ev = db.listEvents(req.couple.id).find((e) => e.id === Number(req.params.id));
+  if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
+  res.type('text/calendar').setHeader('Content-Disposition', `attachment; filename="${ev.date}-evento.ics"`);
+  res.send(buildIcs([ev], { name: req.couple.name }));
+});
+
+// Assinatura do calendário: URL secreta por espaço, sem cookie (o app de
+// calendário não tem sessão). Só eventos compartilhados entram no feed.
+app.get('/api/calendar/token', withCouple, (req, res) => {
+  const base = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+  const token = db.calendarToken(req.couple.id);
+  res.json({ url: `${base}/api/calendar/${token}.ics` });
+});
+app.get('/api/calendar/:token', (req, res) => {
+  const couple = db.coupleByCalendarToken(String(req.params.token || '').replace(/\.ics$/, ''));
+  if (!couple) return res.status(404).json({ error: 'Calendário não encontrado' });
+  const events = db.listEvents(couple.id).filter((e) => e.shared);
+  res.type('text/calendar').send(buildIcs(events, { name: `Chamego · ${couple.name}` }));
+});
+
 app.get('/api/subscription', withCouple, (req, res) => res.json({ subscription: db.getSubscription(req.couple.id) }));
 app.patch('/api/subscription', withCouple, (req, res) => {
   const plan = req.body?.plan === 'premium' ? 'premium' : 'free';
@@ -548,6 +640,7 @@ if (fs.existsSync(distDir)) {
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => console.log(`Server rodando na porta ${PORT}`));
+  startNotifier();
 }
 
 export { app };

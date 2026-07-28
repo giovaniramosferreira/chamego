@@ -57,6 +57,51 @@ export function Row({ icon, title, sub, right, onClick, className = '' }) {
   );
 }
 
+// Um só jeito de marcar coisa feita no app inteiro: item de lista, etapa de
+// plano, ideia de presente. Mesmo toque, mesmo desenho.
+export function CheckRow({ done, text, onToggle, onRemove, right, className = '' }) {
+  return (
+    <div className={`flex items-center gap-3 px-4 py-3 ${className}`}>
+      <button type="button" onClick={onToggle} aria-label={done ? 'Desmarcar' : 'Concluir'}
+        className={`flex-none w-6 h-6 rounded-full grid place-items-center transition-all ${done ? 'bg-accent text-accent-ink' : 'shadow-[inset_0_0_0_1.5px_var(--line-2)]'}`}>
+        {done && <Icon name="check" size={14} />}
+      </button>
+      <span className={`flex-1 text-[.95rem] ${done ? 'line-through text-ink-3' : 'text-ink'}`}>{text}</span>
+      {right}
+      {onRemove && (
+        <button type="button" onClick={onRemove} aria-label="Remover" className="flex-none text-ink-3 hover:text-accent-press">
+          <Icon name="close" size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Contador pequeno (não lidas do chat, pendências).
+export function Badge({ count, className = '' }) {
+  if (!count) return null;
+  return (
+    <span className={`min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-accent-ink text-[10px] font-bold grid place-items-center ${className}`}>
+      {count > 9 ? '9+' : count}
+    </span>
+  );
+}
+
+// Recurso que existe mas ainda não abriu (falta o par, ou é premium):
+// aparece desbotado com o motivo — some não, convida.
+export function LockedRow({ icon, title, reason, onClick }) {
+  return (
+    <button type="button" onClick={onClick} className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left bg-surface border-b border-line last:border-0 hover:bg-accent-soft/40 transition-colors">
+      <span className="flex-none w-9 h-9 rounded-full bg-tint grid place-items-center text-ink-3"><Icon name={icon} size={17} /></span>
+      <span className="flex-1 min-w-0">
+        <span className="block font-medium text-[.95rem] text-ink-2">{title}</span>
+        <span className="block text-sm text-ink-3">{reason}</span>
+      </span>
+      <Icon name="lock" size={14} className="text-ink-3" />
+    </button>
+  );
+}
+
 export function RowList({ children, className = '' }) {
   return <div className={`rounded-card overflow-hidden shadow-[0_1px_2px_rgba(43,37,33,.04),0_1px_0_var(--line)] ${className}`}>{children}</div>;
 }
