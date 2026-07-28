@@ -57,6 +57,7 @@ export default function MaisTab() {
       ))}
 
       <RowList className="mb-6">
+        <Row icon="star" title="Plano de vocês" sub="Grátis pra sempre + o que o Chamego Juntos abre" onClick={() => nav('/app/plano')} />
         <Row icon="settings" title="Configurações" sub="Perfil, espaço, avisos e dados" onClick={() => nav('/app/config')} />
       </RowList>
     </div>

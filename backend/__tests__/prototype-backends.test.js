@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
+
+process.env.ADMIN_KEY = process.env.ADMIN_KEY || 'chave-de-teste';
 import { app } from '../server.js';
 import { db } from '../db.js';
 
@@ -133,9 +135,15 @@ describe('backends do prototipo', () => {
     });
     expect(session.status).toBe(200);
 
-    const upgraded = await request(app).patch('/api/subscription').set('Cookie', cookie).send({ plan: 'premium' });
-    expect(upgraded.body.subscription.plan).toBe('premium');
-    expect(upgraded.body.subscription.entitlements).toContain('premium');
+    // Premium não é mais autoatendimento: ou vem do teste grátis, ou do
+    // webhook do pagamento, ou de cortesia com ADMIN_KEY.
+    const semChave = await request(app).patch('/api/subscription').set('Cookie', cookie).send({ plan: 'premium' });
+    expect(semChave.status).toBe(403);
+
+    const cortesia = await request(app).patch('/api/subscription')
+      .set('Cookie', cookie).set('x-admin-key', process.env.ADMIN_KEY).send({ plan: 'premium' });
+    expect(cortesia.body.subscription.plan).toBe('premium');
+    expect(cortesia.body.subscription.entitlements).toContain('premium');
   });
 });
 
@@ -204,7 +212,8 @@ describe('F1 — planos, presentes, quiz, capsula (completo)', () => {
     expect(blocked.status).toBe(402);
     expect(blocked.body.upgrade).toBe(true);
 
-    await request(app).patch('/api/subscription').set('Cookie', cookie).send({ plan: 'premium' });
+    // O teste grátis já libera as trilhas premium.
+    await request(app).post('/api/subscription/trial').set('Cookie', cookie).send({});
     const ok = await request(app).post(`/api/quizzes/${premiumQuiz.id}/answers`).set('Cookie', cookie).send({ answers });
     expect(ok.status).toBe(200);
   });

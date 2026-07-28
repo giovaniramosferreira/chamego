@@ -96,8 +96,11 @@ Espaço do Casal. Tabelas: `plans`, `plan_steps`, `plan_attachments`, `gifts`,
   quando os dois respondem. Trilhas `premium` travadas por entitlement.
 - **Cápsula do Tempo** (`/app/capsula`): mensagem/foto/áudio selada até uma data
   (conteúdo escondido no servidor até lá), com recorrência anual.
-- **Premium**: `subscriptions.entitlements` libera recursos; **sem gateway de
-  pagamento ainda** — ativação via `PATCH /api/subscription` (interruptor manual).
+- **Chamego Juntos** (plano pago): assinatura por Espaço do Casal, cobrada pelo
+  Stripe. O direito de uso é derivado (teste vigente ou período pago) e escrito
+  só pelo webhook assinado — o cliente nunca concede acesso a si mesmo.
+  Limites do grátis: 30 fotos, 3 cápsulas, 1 álbum. Exportar dados é sempre
+  grátis. Ver `docs/superpowers/specs/2026-07-28-monetizacao.md`.
 
 ### F2 (aba Vocês → seção "Cuidar")
 

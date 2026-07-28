@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
-import { useSubscription } from '../../../lib/subscription.js';
+import { useSubscription, track } from '../../../lib/subscription.js';
 import { AppHeader, Card, Sheet, Btn, Spinner, PaywallSheet } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
@@ -76,7 +76,7 @@ export default function ConquistasTab() {
           </div>
         ))}
         {!sub.has('premium') && (
-          <button onClick={() => setPaywall(true)} className="flex flex-col items-center text-center gap-1.5">
+          <button onClick={() => { track('paywall_visto', 'conquistas'); setPaywall(true); }} className="flex flex-col items-center text-center gap-1.5">
             <Medal icon="lock" locked />
             <span className="text-xs font-medium leading-tight">Coleção especial</span>
           </button>
@@ -92,7 +92,7 @@ export default function ConquistasTab() {
           <Btn block onClick={() => nav('/app/voces/chat')}>Compartilhar no chat</Btn>
         </Sheet>
       )}
-      {paywall && <PaywallSheet title="Coleções especiais" perks={['Coleções temáticas', 'Molduras e selos especiais', 'Marcos raros']} onClose={() => setPaywall(false)} onActivate={sub.activatePremium} />}
+      {paywall && <PaywallSheet title="Coleções especiais" perks={['Coleções temáticas', 'Molduras e selos especiais', 'Marcos raros']} origem="conquistas" onClose={() => setPaywall(false)} />}
     </div>
   );
 }

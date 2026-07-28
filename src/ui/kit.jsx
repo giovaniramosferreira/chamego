@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './icons.jsx';
 
@@ -167,9 +166,9 @@ export function Logo({ className = '' }) {
 }
 
 // Bottom sheet para formulários de criação/edição (mobile-first).
-export function Sheet({ title, onClose, children }) {
+export function Sheet({ title, onClose, children, z = 'z-40' }) {
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center" role="dialog" aria-modal="true">
+    <div className={`fixed inset-0 ${z} flex items-end justify-center`} role="dialog" aria-modal="true">
       <button aria-label="Fechar" onClick={onClose} className="absolute inset-0 bg-ink/40 backdrop-blur-[2px] animate-[fade_.2s_ease]" />
       <div className="relative w-full max-w-[430px] bg-bg rounded-t-[22px] px-5 pt-3 pb-[max(env(safe-area-inset-bottom),20px)] shadow-[0_-8px_30px_rgba(43,37,33,.18)] max-h-[88vh] overflow-y-auto sheet-enter">
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-ink-3/30" />
@@ -200,19 +199,17 @@ export function Spinner({ className = '' }) {
   return <span className={`inline-block w-5 h-5 rounded-full border-2 border-accent/30 border-t-accent animate-spin ${className}`} />;
 }
 
-// Paywall reutilizável: mostra benefícios e ativa o Premium do casal.
-// (Sem gateway de pagamento nesta fase — ativa via PATCH /api/subscription.)
-export function PaywallSheet({ title = 'Recurso Premium', perks = [], onClose, onActivate }) {
-  const [busy, setBusy] = useState(false);
-  async function activate() {
-    setBusy(true);
-    try { await onActivate?.(); onClose?.(); } finally { setBusy(false); }
-  }
+// Paywall reutilizável: mostra o que abre e leva à tela de Plano, onde mora
+// o checkout. Nada de liberar acesso pelo cliente — quem libera é o servidor,
+// depois do pagamento confirmado (ou durante o teste grátis).
+export function PaywallSheet({ title = 'Chamego Juntos', perks = [], origem = 'app', onClose }) {
   return (
-    <Sheet title={title} onClose={onClose}>
+    // Acima de qualquer folha aberta: o limite costuma acontecer com um
+    // formulário na tela, e o convite não pode ficar atrás dele.
+    <Sheet title={title} onClose={onClose} z="z-[60]">
       <div className="flex flex-col items-center text-center mb-4">
         <span className="w-14 h-14 rounded-full bg-accent-soft shadow-[inset_0_0_0_1px_var(--accent-line)] grid place-items-center text-accent mb-3"><Icon name="lock" size={24} /></span>
-        <p className="text-ink-2 text-[.95rem] max-w-[32ch]">Libere o Premium do espaço de vocês e desbloqueie tudo.</p>
+        <p className="text-ink-2 text-[.95rem] max-w-[32ch]">Isso faz parte do <strong className="text-ink">Chamego Juntos</strong>, o plano do espaço de vocês.</p>
       </div>
       <div className="mb-5 space-y-2">
         {perks.map((p, i) => (
@@ -222,7 +219,7 @@ export function PaywallSheet({ title = 'Recurso Premium', perks = [], onClose, o
           </div>
         ))}
       </div>
-      <Btn block disabled={busy} onClick={activate}>{busy ? <Spinner /> : 'Ativar Premium'}</Btn>
+      <Btn block to={`/app/plano?origem=${encodeURIComponent(origem)}`} onClick={onClose}>Ver o plano</Btn>
       <button onClick={onClose} className="w-full text-center text-sm text-ink-3 mt-3">Agora não</button>
     </Sheet>
   );

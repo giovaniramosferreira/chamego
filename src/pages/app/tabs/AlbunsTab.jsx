@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
-import { useSubscription } from '../../../lib/subscription.js';
+import { useSubscription, track } from '../../../lib/subscription.js';
 import { AppHeader, Sheet, Fab, Field, Btn, Spinner, EmptyState, PaywallSheet } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
@@ -36,7 +36,7 @@ export default function AlbunsTab() {
             </button>
           ))}
           {!sub.has('premium') && (
-            <button onClick={() => setPaywall(true)} className="w-full flex items-center gap-3 rounded-card bg-surface p-4 shadow-[inset_0_0_0_1px_var(--line-2)]">
+            <button onClick={() => { track('paywall_visto', 'albuns'); setPaywall(true); }} className="w-full flex items-center gap-3 rounded-card bg-surface p-4 shadow-[inset_0_0_0_1px_var(--line-2)]">
               <span className="flex-none w-10 h-10 rounded-full bg-accent-soft grid place-items-center text-accent-press"><Icon name="lock" size={18} /></span>
               <span className="flex-1 text-left"><span className="block font-medium">Retrospectiva "um ano atrás"</span><span className="block text-sm text-ink-2">Premium</span></span>
             </button>
@@ -46,7 +46,7 @@ export default function AlbunsTab() {
 
       <Fab onClick={() => setSheet(true)} label="Novo álbum" />
       {sheet && <AlbumSheet onClose={() => setSheet(false)} onSaved={(id) => { setSheet(false); nav(`/app/albuns/${id}`); }} />}
-      {paywall && <PaywallSheet title="Retrospectivas & exportação" perks={['Exportar em alta resolução', 'Temas e capas', 'Retrospectiva anual']} onClose={() => setPaywall(false)} onActivate={sub.activatePremium} />}
+      {paywall && <PaywallSheet title="Retrospectivas & exportação" perks={['Exportar em alta resolução', 'Temas e capas', 'Retrospectiva anual']} origem="albuns" onClose={() => setPaywall(false)} />}
     </div>
   );
 }
@@ -64,8 +64,14 @@ function AlbumSheet({ onClose, onSaved }) {
     e.preventDefault();
     if (!form.title.trim()) return;
     setSaving(true);
-    try { const { album } = await api('/api/albums', { method: 'POST', body: { title: form.title.trim(), caption: form.caption, momentIds: sel } }); onSaved(album.id); }
-    finally { setSaving(false); }
+    try {
+      const { album } = await api('/api/albums', { method: 'POST', body: { title: form.title.trim(), caption: form.caption, momentIds: sel } });
+      onSaved(album.id);
+    } catch (e) {
+      // Limite do plano: o paywall global já apareceu, aqui é só não estourar.
+      if (!e.upgrade) throw e;
+      onClose();
+    } finally { setSaving(false); }
   }
   return (
     <Sheet title="Novo álbum" onClose={onClose}>

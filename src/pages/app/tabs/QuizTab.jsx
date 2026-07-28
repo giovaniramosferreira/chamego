@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
 import { useSession } from '../../../lib/session-context.js';
-import { useSubscription } from '../../../lib/subscription.js';
+import { useSubscription, track } from '../../../lib/subscription.js';
 import { AppHeader, Card, Row, Btn, Chip, Spinner, EmptyState, ChoiceCard, ProgressDots, PaywallSheet } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
@@ -20,7 +20,7 @@ export default function QuizTab() {
   const shown = useMemo(() => (quizzes || []).filter((q) => cat === 'Todos' || q.category === cat), [quizzes, cat]);
 
   function open(q) {
-    if (q.premium && !sub.has('premium')) { setPaywall(true); return; }
+    if (q.premium && !sub.has('premium')) { track('paywall_visto', 'quiz'); setPaywall(true); return; }
     nav(`/app/quiz/${q.id}`);
   }
   const stateSub = (q) => q.answered && q.partnerAnswered ? 'Concluído · ver resultado'
@@ -48,7 +48,7 @@ export default function QuizTab() {
         </Card>
       )}
 
-      {paywall && <PaywallSheet title="Trilhas Premium" perks={['Quizzes por tema', 'Sonhos & futuro', 'Intimidade & conexão', 'Novos quizzes toda semana']} onClose={() => setPaywall(false)} onActivate={async () => { await sub.activatePremium(); setQuizzes(await api('/api/quizzes').then((d) => d.quizzes)); }} />}
+      {paywall && <PaywallSheet title="Trilhas Premium" perks={['Quizzes por tema', 'Sonhos & futuro', 'Intimidade & conexão', 'Novos quizzes toda semana']} origem="quiz" onClose={() => setPaywall(false)} />}
     </div>
   );
 }

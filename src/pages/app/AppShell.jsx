@@ -5,6 +5,7 @@ import { Badge } from '../../ui/kit.jsx';
 import { api } from '../../lib/api.js';
 import QuickAdd from '../../components/QuickAdd.jsx';
 import ConnectionBanner from '../../components/ConnectionBanner.jsx';
+import UpgradeGate from '../../components/UpgradeGate.jsx';
 import InicioTab from './tabs/InicioTab.jsx';
 import ConfigTab from './tabs/ConfigTab.jsx';
 import AgendaTab from './tabs/AgendaTab.jsx';
@@ -13,6 +14,7 @@ import ListaDetail from './tabs/ListaDetail.jsx';
 import MomentosTab from './tabs/MomentosTab.jsx';
 import VocesTab from './tabs/VocesTab.jsx';
 import MaisTab from './tabs/MaisTab.jsx';
+import PlanoTab from './tabs/PlanoTab.jsx';
 import ChatScreen from './tabs/ChatScreen.jsx';
 import PlanosTab, { PlanoDetail } from './tabs/PlanosTab.jsx';
 import PresentesTab, { PresenteDetail } from './tabs/PresentesTab.jsx';
@@ -63,6 +65,7 @@ export default function AppShell() {
   return (
     <div className="min-h-screen bg-bg flex justify-center">
       <ConnectionBanner />
+      <UpgradeGate />
       <div className="w-full max-w-[430px] flex flex-col min-h-screen">
         <main className={`flex-1 px-5 screen-enter ${hideNav ? '' : 'pb-28'}`}>
           <Routes>
@@ -74,6 +77,7 @@ export default function AppShell() {
             <Route path="voces" element={<VocesTab />} />
             <Route path="voces/chat" element={<ChatScreen onRead={loadBadges} />} />
             <Route path="mais" element={<MaisTab />} />
+            <Route path="plano" element={<PlanoTab />} />
             <Route path="planos" element={<PlanosTab />} />
             <Route path="planos/:id" element={<PlanoDetail />} />
             <Route path="presentes" element={<PresentesTab />} />

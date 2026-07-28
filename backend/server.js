@@ -9,6 +9,7 @@ import { verifyGoogleToken, createSession, sessionFromRequest, normalizeEmail, S
 import { sendMagicLink, sendInvite, sendPartnerJoined } from './mailer.js';
 import { buildIcs } from './ics.js';
 import { startNotifier } from './notifier.js';
+import { availablePlans, billingEnabled, createCheckout, createPortal, handleWebhook, TRIAL_DAYS } from './billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -34,6 +35,18 @@ const uploadMedia = multer({
   storage: uploadStorage,
   limits: { fileSize: 25 * 1024 * 1024, files: 1 },
   fileFilter: (req, file, cb) => cb(null, /^(image|audio)\//.test(file.mimetype)),
+});
+
+// O webhook precisa do corpo cru: a assinatura do provedor não fecha sobre
+// JSON reserializado. Por isso vem antes do express.json().
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const result = await handleWebhook(req.body, req.headers['stripe-signature']);
+    res.json(result);
+  } catch (e) {
+    console.error('webhook error', e.message);
+    res.status(e.status || 400).json({ error: 'Webhook inválido' });
+  }
 });
 
 app.use(express.json());
@@ -278,6 +291,32 @@ app.post('/api/invites/:code/accept', requireAuth, async (req, res) => {
 
 /* ── Conteúdo das abas ───────────────────────────────────────────────────── */
 
+/* ── O que é grátis e o que é pago ────────────────────────────────────────
+   O grátis precisa ser um app inteiro e útil para sempre: agenda, listas,
+   momentos, check-in, chat e convite não têm trava. O pago é o que acumula
+   (fotos, cápsulas, álbuns) e o conteúdo dos packs.
+   Exportar os próprios dados é direito, não recurso: nunca entra no pago. */
+const FREE_LIMITS = { photos: 30, capsules: 3, albums: 1 };
+
+function isPremium(coupleId) {
+  return db.getSubscription(coupleId).entitlements.includes('premium');
+}
+
+// Devolve 402 com `upgrade: true` — o app abre o paywall a partir disso.
+function withinLimit(req, res, key) {
+  if (isPremium(req.couple.id)) return true;
+  const used = db.usage(req.couple.id)[key];
+  if (used < FREE_LIMITS[key]) return true;
+  db.track('limite_atingido', { coupleId: req.couple.id, email: req.user.email, props: { limite: key } });
+  const msg = {
+    photos: `O plano grátis guarda ${FREE_LIMITS.photos} fotos. No Chamego Juntos são ilimitadas.`,
+    capsules: `O plano grátis tem ${FREE_LIMITS.capsules} cápsulas. No Chamego Juntos são ilimitadas.`,
+    albums: `O plano grátis tem ${FREE_LIMITS.albums} álbum. No Chamego Juntos são ilimitados.`,
+  }[key];
+  res.status(402).json({ error: msg, upgrade: true, limite: key, usado: used, maximo: FREE_LIMITS[key] });
+  return false;
+}
+
 // Trava premium: bloqueia se a subscription do casal não tem o entitlement.
 // Reutilizável quando novas rotas premium chegarem (F2+). Hoje o quiz premium
 // faz a checagem inline por depender do quiz específico.
@@ -347,6 +386,7 @@ app.delete('/api/items/:id', withCouple, (req, res) => {
 /* Momentos — 1 foto por momento */
 app.get('/api/moments', withCouple, (req, res) => res.json({ moments: db.listMoments(req.couple.id) }));
 app.post('/api/moments', requireAuth, requireCouple, upload.single('photo'), (req, res) => {
+  if (req.file && !withinLimit(req, res, 'photos')) return;
   const { text, date } = req.body || {};
   const d = isDate(date) ? date : new Date().toISOString().slice(0, 10);
   const urls = req.file ? [`/uploads/${req.file.filename}`] : [];
@@ -354,6 +394,9 @@ app.post('/api/moments', requireAuth, requireCouple, upload.single('photo'), (re
   res.json({ moment: db.createMoment(req.couple.id, req.user.email, { text: text || '', date: d }, urls) });
 });
 app.patch('/api/moments/:id', requireAuth, requireCouple, upload.single('photo'), (req, res) => {
+  // Trocar foto não consome cota nova (sai uma, entra uma); adicionar consome.
+  const trocando = req.file && db.listMoments(req.couple.id).find((m) => m.id === Number(req.params.id))?.photos.length;
+  if (req.file && !trocando && !withinLimit(req, res, 'photos')) return;
   const { text, date, removePhoto } = req.body || {};
   const newPhotoUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
   const moment = db.updateMoment(req.couple.id, Number(req.params.id), { text, date },
@@ -546,6 +589,7 @@ app.get('/api/time-capsules/:id', withCouple, (req, res) => {
   res.json({ capsule });
 });
 app.post('/api/time-capsules', requireAuth, requireCouple, uploadMedia.single('media'), (req, res) => {
+  if (!withinLimit(req, res, 'capsules')) return;
   const { title, openDate, message, recurrence, scope } = req.body || {};
   if (!title?.trim() || !isDate(openDate)) return res.status(400).json({ error: 'Informe título e data de abertura' });
   const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null;
@@ -567,6 +611,7 @@ app.get('/api/albums/:id', withCouple, (req, res) => {
   res.json({ album });
 });
 app.post('/api/albums', withCouple, (req, res) => {
+  if (!withinLimit(req, res, 'albums')) return;
   if (!req.body?.title?.trim()) return res.status(400).json({ error: 'Dê um nome ao álbum' });
   res.json({ album: db.createAlbum(req.couple.id, req.user.email, req.body) });
 });
@@ -625,10 +670,86 @@ app.get('/api/calendar/:token', (req, res) => {
   res.type('text/calendar').send(buildIcs(events, { name: `Chamego · ${couple.name}` }));
 });
 
-app.get('/api/subscription', withCouple, (req, res) => res.json({ subscription: db.getSubscription(req.couple.id) }));
+/* ── Assinatura e cobrança ───────────────────────────────────────────────── */
+
+app.get('/api/subscription', withCouple, (req, res) => {
+  const sub = db.getSubscription(req.couple.id);
+  res.json({
+    subscription: {
+      plan: sub.plan,
+      status: sub.status,
+      entitlements: sub.entitlements,
+      trialing: sub.trialing,
+      trialEndsAt: sub.trial_ends_at,
+      currentPeriodEnd: sub.current_period_end,
+      cancelAtPeriodEnd: !!sub.cancel_at_period_end,
+      trialUsed: !!sub.trial_ends_at,
+      managed: !!sub.customer_id,
+    },
+    usage: db.usage(req.couple.id),
+    limits: FREE_LIMITS,
+    plans: availablePlans(),
+    billingEnabled: billingEnabled(),
+    trialDays: TRIAL_DAYS,
+  });
+});
+
+// Teste grátis sem cartão: uma vez por espaço.
+app.post('/api/subscription/trial', withCouple, (req, res) => {
+  const result = db.startTrial(req.couple.id, TRIAL_DAYS);
+  if (!result.started) return res.status(409).json({ error: 'Este espaço já usou o período de teste' });
+  db.track('teste_iniciado', { coupleId: req.couple.id, email: req.user.email });
+  res.json({ subscription: db.getSubscription(req.couple.id) });
+});
+
+app.post('/api/billing/checkout', withCouple, async (req, res) => {
+  try {
+    db.track('checkout_iniciado', { coupleId: req.couple.id, email: req.user.email, props: { plan: req.body?.plan } });
+    res.json(await createCheckout({ coupleId: req.couple.id, email: req.user.email, plan: req.body?.plan }));
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/billing/portal', withCouple, async (req, res) => {
+  try {
+    res.json(await createPortal({ coupleId: req.couple.id }));
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Ferramenta de operação (suporte, cortesia, imprensa) — exige ADMIN_KEY.
+// Era esta rota, aberta a qualquer pessoa logada, que dava premium de graça.
 app.patch('/api/subscription', withCouple, (req, res) => {
-  const plan = req.body?.plan === 'premium' ? 'premium' : 'free';
-  res.json({ subscription: db.setSubscription(req.couple.id, plan) });
+  const key = process.env.ADMIN_KEY;
+  if (!key || req.headers['x-admin-key'] !== key) return res.status(403).json({ error: 'Não autorizado' });
+  const dias = Number(req.body?.days) || 365;
+  const status = req.body?.plan === 'premium' ? 'active' : 'free';
+  res.json({
+    subscription: db.saveSubscription(req.couple.id, {
+      status,
+      provider: 'cortesia',
+      currentPeriodEnd: status === 'active' ? new Date(Date.now() + dias * 86_400_000).toISOString() : null,
+    }),
+  });
+});
+
+// Funil de venda (espaços, conexão do par, testes, assinantes) — ADMIN_KEY.
+app.get('/api/admin/metrics', (req, res) => {
+  const key = process.env.ADMIN_KEY;
+  if (!key || req.headers['x-admin-key'] !== key) return res.status(403).json({ error: 'Não autorizado' });
+  res.json(db.funnel(Number(req.query.days) || 30));
+});
+
+// Eventos de funil vindos da interface (lista fechada, sem dado livre).
+const CLIENT_EVENTS = ['paywall_visto', 'plano_visto', 'convite_compartilhado', 'instalou_app'];
+app.post('/api/track', requireAuth, (req, res) => {
+  const name = String(req.body?.name || '');
+  if (!CLIENT_EVENTS.includes(name)) return res.status(400).json({ error: 'Evento desconhecido' });
+  const couple = db.getCoupleByUser(req.user.email);
+  db.track(name, { coupleId: couple?.id || null, email: req.user.email, props: { origem: String(req.body?.origem || '').slice(0, 40) } });
+  res.json({ ok: true });
 });
 
 // SPA em produção

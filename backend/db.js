@@ -211,6 +211,15 @@ const SCHEMA = [
     last_read_id INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (couple_id, user_email)
   )`,
+  // Funil de venda: eventos próprios, sem depender de analytics de terceiros.
+  `CREATE TABLE IF NOT EXISTS events_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER,
+    user_email TEXT,
+    name TEXT NOT NULL,
+    props TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
   // Idempotência dos emails automáticos: uma linha por (casal, tipo, chave).
   `CREATE TABLE IF NOT EXISTS notifications_sent (
     couple_id INTEGER NOT NULL REFERENCES couples(id),
@@ -359,6 +368,14 @@ export function createDb(file) {
     "ALTER TABLE albums ADD COLUMN caption TEXT DEFAULT ''",
     // Feed .ics do casal: token público (só leitura de eventos compartilhados).
     'ALTER TABLE couples ADD COLUMN calendar_token TEXT',
+    // Cobrança: o estado da assinatura vem do provedor (Stripe), nunca do cliente.
+    "ALTER TABLE subscriptions ADD COLUMN status TEXT DEFAULT 'free'",
+    'ALTER TABLE subscriptions ADD COLUMN provider TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN customer_id TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN subscription_id TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN current_period_end TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN trial_ends_at TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN cancel_at_period_end INTEGER DEFAULT 0',
   ];
   for (const ddl of MIGRATIONS) {
     try { sqlite.prepare(ddl).run(); } catch { /* coluna já existe */ }
@@ -1165,7 +1182,7 @@ export function createDb(file) {
         sqlite.prepare('DELETE FROM plan_attachments WHERE plan_id IN (SELECT id FROM plans WHERE couple_id=?)').run(coupleId);
         for (const t of ['events', 'lists', 'moments', 'checkins', 'goals', 'messages', 'plans', 'gifts',
           'saved_date_ideas', 'quiz_answers', 'time_capsules', 'albums', 'intimacy_sessions', 'subscriptions',
-          'message_reads', 'notifications_sent', 'invites', 'couple_members']) {
+          'message_reads', 'notifications_sent', 'events_log', 'invites', 'couple_members']) {
           sqlite.prepare(`DELETE FROM ${t} WHERE couple_id=?`).run(coupleId);
         }
         sqlite.prepare('DELETE FROM couples WHERE id=?').run(coupleId);
@@ -1174,17 +1191,102 @@ export function createDb(file) {
       return true;
     },
 
+    /* ── Assinatura ──────────────────────────────────────────────────────
+       Regra: o direito de uso é *derivado* do estado guardado (teste em
+       andamento, período pago vigente). Nada de entitlement escrito à mão
+       pelo cliente — quem escreve é o webhook do provedor. */
     getSubscription(coupleId) {
       const row = sqlite.prepare('SELECT * FROM subscriptions WHERE couple_id=?').get(coupleId);
-      if (row) return { ...row, entitlements: parseJson(row.entitlements, ['free']) };
-      return { couple_id: coupleId, plan: 'free', entitlements: ['free'] };
+      const now = new Date().toISOString();
+      const base = {
+        couple_id: coupleId,
+        plan: 'free',
+        status: 'free',
+        provider: null,
+        customer_id: null,
+        subscription_id: null,
+        current_period_end: null,
+        trial_ends_at: null,
+        cancel_at_period_end: 0,
+        ...(row || {}),
+      };
+      const trialing = !!base.trial_ends_at && base.trial_ends_at > now;
+      // Teste vale só pela data dele — status 'trialing' vencido não libera nada.
+      // "canceled" continua valendo até o fim do período já pago.
+      const paid = ['active', 'past_due', 'canceled'].includes(base.status)
+        && (!base.current_period_end || base.current_period_end > now);
+      const premium = trialing || paid;
+      return {
+        ...base,
+        plan: premium ? 'premium' : 'free',
+        trialing,
+        entitlements: premium ? ['free', 'premium'] : ['free'],
+      };
     },
-    setSubscription(coupleId, plan = 'free') {
-      const entitlements = plan === 'premium' ? ['free', 'premium'] : ['free'];
-      sqlite.prepare(`INSERT INTO subscriptions (couple_id, plan, entitlements, updated_at) VALUES (?, ?, ?, datetime('now'))
-        ON CONFLICT(couple_id) DO UPDATE SET plan=excluded.plan, entitlements=excluded.entitlements, updated_at=datetime('now')`)
-        .run(coupleId, String(plan), JSON.stringify(entitlements));
+    // Escrita vinda do provedor de pagamento (webhook) ou do início do teste.
+    saveSubscription(coupleId, patch = {}) {
+      const cur = sqlite.prepare('SELECT * FROM subscriptions WHERE couple_id=?').get(coupleId) || {};
+      const next = {
+        status: patch.status ?? cur.status ?? 'free',
+        provider: patch.provider ?? cur.provider ?? null,
+        customer_id: patch.customerId ?? cur.customer_id ?? null,
+        subscription_id: patch.subscriptionId ?? cur.subscription_id ?? null,
+        current_period_end: patch.currentPeriodEnd ?? cur.current_period_end ?? null,
+        trial_ends_at: patch.trialEndsAt ?? cur.trial_ends_at ?? null,
+        cancel_at_period_end: (patch.cancelAtPeriodEnd ?? cur.cancel_at_period_end) ? 1 : 0,
+      };
+      sqlite.prepare(`INSERT INTO subscriptions
+          (couple_id, plan, entitlements, status, provider, customer_id, subscription_id, current_period_end, trial_ends_at, cancel_at_period_end, updated_at)
+        VALUES (?, 'free', '["free"]', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(couple_id) DO UPDATE SET
+          status=excluded.status, provider=excluded.provider, customer_id=excluded.customer_id,
+          subscription_id=excluded.subscription_id, current_period_end=excluded.current_period_end,
+          trial_ends_at=excluded.trial_ends_at, cancel_at_period_end=excluded.cancel_at_period_end,
+          updated_at=datetime('now')`)
+        .run(coupleId, next.status, next.provider, next.customer_id, next.subscription_id,
+          next.current_period_end, next.trial_ends_at, next.cancel_at_period_end);
       return this.getSubscription(coupleId);
+    },
+    coupleByCustomerId(customerId) {
+      return sqlite.prepare('SELECT couple_id FROM subscriptions WHERE customer_id=?').get(customerId)?.couple_id || null;
+    },
+    // Teste grátis: uma vez por espaço, sem cartão.
+    startTrial(coupleId, days = 14) {
+      const row = sqlite.prepare('SELECT trial_ends_at, status FROM subscriptions WHERE couple_id=?').get(coupleId);
+      if (row?.trial_ends_at) return { started: false, reason: 'already_used', subscription: this.getSubscription(coupleId) };
+      const ends = new Date(Date.now() + days * 86_400_000).toISOString();
+      this.saveSubscription(coupleId, { status: 'trialing', provider: 'trial', trialEndsAt: ends });
+      return { started: true, subscription: this.getSubscription(coupleId) };
+    },
+
+    /* ── Uso vs limites do plano grátis ── */
+    usage(coupleId) {
+      const count = (sql) => sqlite.prepare(sql).get(coupleId).c;
+      return {
+        photos: count(`SELECT COUNT(*) c FROM moment_photos p
+          JOIN moments m ON m.id=p.moment_id WHERE m.couple_id=?`),
+        capsules: count('SELECT COUNT(*) c FROM time_capsules WHERE couple_id=?'),
+        albums: count('SELECT COUNT(*) c FROM albums WHERE couple_id=?'),
+      };
+    },
+
+    /* ── Funil (eventos próprios, sem analytics de terceiros) ── */
+    track(name, { coupleId = null, email = null, props = {} } = {}) {
+      sqlite.prepare('INSERT INTO events_log (couple_id, user_email, name, props) VALUES (?, ?, ?, ?)')
+        .run(coupleId, email, String(name).slice(0, 60), JSON.stringify(props).slice(0, 1000));
+    },
+    funnel(days = 30) {
+      const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
+      const byName = sqlite.prepare(`SELECT name, COUNT(*) c, COUNT(DISTINCT couple_id) casais
+        FROM events_log WHERE created_at >= ? GROUP BY name ORDER BY c DESC`).all(since);
+      const espacos = sqlite.prepare('SELECT COUNT(*) c FROM couples').get().c;
+      const conectados = sqlite.prepare(`SELECT COUNT(*) c FROM (
+        SELECT couple_id FROM couple_members GROUP BY couple_id HAVING COUNT(*) > 1)`).get().c;
+      const assinantes = sqlite.prepare(`SELECT COUNT(*) c FROM subscriptions
+        WHERE status IN ('active','past_due') AND (current_period_end IS NULL OR current_period_end > datetime('now'))`).get().c;
+      const emTeste = sqlite.prepare(`SELECT COUNT(*) c FROM subscriptions
+        WHERE trial_ends_at > datetime('now') AND status='trialing'`).get().c;
+      return { dias: days, espacos, conectados, emTeste, assinantes, eventos: byName };
     },
   };
 }

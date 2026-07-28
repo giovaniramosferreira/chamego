@@ -130,6 +130,12 @@ export default function ConfigTab() {
       )}
 
       {/* Avisos: o app lembra por vocês — e dá pra desligar num toque. */}
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Plano</p>
+      <RowList className="mb-6">
+        <Row icon="star" title="Plano de vocês" sub="Ver o que está aberto e o que o Chamego Juntos abre"
+          onClick={() => navigate('/app/plano')} />
+      </RowList>
+
       <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Avisos por email</p>
       <RowList className="mb-6">
         <Row icon="calendar" title="Agenda de amanhã" sub="Na véspera, se tiver algo marcado"
@@ -142,7 +148,7 @@ export default function ConfigTab() {
       <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Seus dados</p>
       <RowList className="mb-6">
         <Row icon="logout" title="Baixar tudo do nosso espaço" sub="Um arquivo com eventos, listas, momentos e conversas"
-          onClick={() => { window.location.href = '/api/export'; }} />
+          onClick={() => { window.location.assign('/api/export'); }} />
         <Row icon="shield" title="Termos e privacidade" sub="O que fazemos com os dados de vocês"
           onClick={() => navigate('/termos')} />
         <Row icon="user" title="Sair do espaço" sub="Você sai; o conteúdo fica com seu par" onClick={() => setDanger('sair')} />

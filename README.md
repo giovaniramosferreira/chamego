@@ -27,6 +27,10 @@ Sem SMTP configurado, o link mágico é impresso no console do servidor.
 | `MAIL_FROM` | opcional | remetente dos emails |
 | `PUBLIC_URL` | produção | base p/ links de convite e magic link |
 | `DATA_DIR` | produção | disco persistente (SQLite) |
+| `STRIPE_SECRET_KEY` | p/ vender | cobrança; sem ela o app roda sem assinatura |
+| `STRIPE_WEBHOOK_SECRET` | p/ vender | valida `/api/billing/webhook` |
+| `STRIPE_PRICE_MENSAL/ANUAL` | p/ vender | IDs de preço (BRL) do painel do Stripe |
+| `ADMIN_KEY` | recomendada | cortesias e `GET /api/admin/metrics` |
 
 ## Testes
 ```bash
@@ -50,6 +54,16 @@ Com SMTP configurado, o servidor envia a agenda da véspera (a partir das 18h) e
 o resumo semanal (domingo, a partir das 19h) — ligáveis/desligáveis em
 Configurações. A agenda também pode ser assinada no Google/Apple Agenda pelo
 feed `.ics` do espaço.
+
+## Planos
+Grátis pra sempre: agenda, listas, momentos, check-in, chat, convite, lembretes
+por email, feed `.ics` e exportação dos dados. **Chamego Juntos** (R$ 14,90/mês
+ou R$ 89/ano, por casal) abre fotos/cápsulas/álbuns ilimitados, retrospectiva e
+todos os packs de conteúdo. Teste de 14 dias sem cartão, uma vez por espaço.
+
+O acesso é derivado do estado da assinatura no servidor; quem escreve esse
+estado é o webhook do Stripe. Detalhes em
+`docs/superpowers/specs/2026-07-28-monetizacao.md`.
 
 ## Referência de design
 Protótipos navegáveis em `design_handoff_chamego/` (landing hifi + área logada).
