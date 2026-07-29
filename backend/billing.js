@@ -14,6 +14,14 @@ export const PLANS = {
 
 export const TRIAL_DAYS = 14;
 
+// Presente: cobrança única, sem renovar. Cartão sempre; Pix quando habilitado
+// (presente é compra avulsa — é onde o Pix brasileiro faz mais sentido).
+export const GIFTS = {
+  3: { months: 3, label: '3 meses', priceEnv: 'STRIPE_PRICE_PRESENTE_3M', amount: 'R$ 39' },
+  6: { months: 6, label: '6 meses', priceEnv: 'STRIPE_PRICE_PRESENTE_6M', amount: 'R$ 69' },
+  12: { months: 12, label: '1 ano', priceEnv: 'STRIPE_PRICE_PRESENTE_12M', amount: 'R$ 119' },
+};
+
 let cached = null;
 function stripe() {
   if (!process.env.STRIPE_SECRET_KEY) return null;
@@ -67,6 +75,38 @@ export async function createCheckout({ coupleId, email, plan = 'mensal' }) {
   return { url: session.url };
 }
 
+export function availableGifts() {
+  return Object.values(GIFTS)
+    .filter((g) => !!process.env[g.priceEnv])
+    .map(({ months, label, amount }) => ({ months, label, amount }));
+}
+
+// Compra de presente: não exige conta. Quem paga informa o email no próprio
+// checkout e recebe o código para entregar ao casal.
+export async function createGiftCheckout({ months = 12, buyerName = '', message = '' } = {}) {
+  const s = stripe();
+  const chosen = GIFTS[months] || GIFTS[12];
+  const price = process.env[chosen.priceEnv];
+  if (!s || !price) throw Object.assign(new Error('Presente ainda não está disponível'), { status: 503 });
+
+  const methods = process.env.STRIPE_PIX === '1' ? ['card', 'pix'] : ['card'];
+  const session = await s.checkout.sessions.create({
+    mode: 'payment',
+    line_items: [{ price, quantity: 1 }],
+    payment_method_types: methods,
+    locale: 'pt-BR',
+    metadata: {
+      gift: '1',
+      months: String(chosen.months),
+      buyer_name: String(buyerName).slice(0, 80),
+      gift_message: String(message).slice(0, 300),
+    },
+    success_url: `${baseUrl()}/presente?compra=ok&sessao={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${baseUrl()}/presente?compra=cancelado`,
+  });
+  return { url: session.url };
+}
+
 // Portal do cliente: trocar cartão, ver recibos e cancelar em dois toques —
 // cancelamento tem que ser tão fácil quanto assinar.
 export async function createPortal({ coupleId }) {
@@ -99,6 +139,33 @@ export async function handleWebhook(rawBody, signature) {
 
   const event = s.webhooks.constructEvent(rawBody, signature, secret);
   const object = event.data.object;
+
+  // Presente pago: gera o código e manda pra quem comprou. Não há casal
+  // envolvido ainda — o vínculo acontece no resgate.
+  if (event.type === 'checkout.session.completed' && object.metadata?.gift === '1') {
+    const existing = db.giftBySession(object.id);
+    if (existing) return { ok: true, type: event.type, code: existing.code };
+    const gift = db.createGiftCode({
+      months: Number(object.metadata.months) || 12,
+      origin: 'compra',
+      buyerEmail: object.customer_details?.email || null,
+      buyerName: object.metadata.buyer_name || null,
+      message: object.metadata.gift_message || '',
+      session: object.id,
+    });
+    db.track('presente_comprado', { props: { months: gift.months } });
+    if (gift.buyer_email) {
+      const { sendGiftCode } = await import('./mailer.js');
+      await sendGiftCode({
+        to: gift.buyer_email,
+        code: gift.code,
+        months: gift.months,
+        url: `${baseUrl()}/presente/${gift.code}`,
+      }).catch((e) => console.error('gift email error', e));
+    }
+    return { ok: true, type: event.type, code: gift.code };
+  }
+
   const coupleId = resolveCouple(object);
   if (!coupleId) return { ignored: true, type: event.type };
 

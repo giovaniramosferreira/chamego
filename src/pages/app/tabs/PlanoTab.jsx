@@ -4,7 +4,7 @@ import { api } from '../../../lib/api.js';
 import { useSubscription, track } from '../../../lib/subscription.js';
 import { GRATIS, PAGO, PLANO_NOME } from '../../../lib/plan.js';
 import { useToast } from '../../../lib/toast-context.js';
-import { AppHeader, Card, Btn, Spinner, Row, RowList } from '../../../ui/kit.jsx';
+import { AppHeader, Card, Btn, Field, Spinner, Row, RowList } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 const fmtData = (iso) => (iso ? new Date(iso).toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }) : '');
@@ -15,6 +15,8 @@ export default function PlanoTab() {
   const sub = useSubscription();
   const [params] = useSearchParams();
   const [busy, setBusy] = useState('');
+  // Código vindo do link do presente (/presente/CODIGO → aqui já preenchido).
+  const [codigo, setCodigo] = useState(params.get('presente') || '');
 
   useEffect(() => { track('plano_visto', params.get('origem') || 'config'); }, [params]);
 
@@ -45,6 +47,20 @@ export default function PlanoTab() {
     } finally { setBusy(''); }
   }
 
+  async function resgatar(e) {
+    e?.preventDefault();
+    if (!codigo.trim()) return;
+    setBusy('presente');
+    try {
+      const { months } = await api(`/api/gift/${codigo.trim()}/redeem`, { method: 'POST' });
+      await sub.reload();
+      setCodigo('');
+      toast(`Presente de ${months === 12 ? '1 ano' : `${months} meses`} resgatado 💛`);
+    } catch (e2) {
+      toast(e2.message, { tone: 'error' });
+    } finally { setBusy(''); }
+  }
+
   async function gerenciar() {
     setBusy('portal');
     try {
@@ -70,6 +86,7 @@ export default function PlanoTab() {
         <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-1">Plano atual</p>
         <p className="font-display text-2xl text-accent">{premium ? PLANO_NOME : 'Chamego Grátis'}</p>
         {sub.trialing && <p className="text-sm text-ink-2 mt-1">Teste grátis até {fmtData(sub.trialEndsAt)}</p>}
+        {sub.gifted && <p className="text-sm text-ink-2 mt-1">Presente ativo até {fmtData(sub.giftUntil)} 💛</p>}
         {!sub.trialing && premium && sub.cancelAtPeriodEnd && (
           <p className="text-sm text-ink-2 mt-1">Ativo até {fmtData(sub.currentPeriodEnd)} — depois volta pro grátis, sem perder nada.</p>
         )}
@@ -125,6 +142,20 @@ export default function PlanoTab() {
           {busy === 'portal' ? <Spinner /> : 'Gerenciar assinatura, cartão e recibos'}
         </Btn>
       )}
+
+      {/* Presente: resgatar e presentear moram no mesmo lugar. */}
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mt-8 mb-2">Presente</p>
+      <form onSubmit={resgatar} className="mb-2">
+        <Field label="Tem um código de presente?" placeholder="ABCDE-FGHIJ" value={codigo}
+          onChange={(ev) => setCodigo(ev.target.value.toUpperCase())} />
+        <Btn block variant="ghost" type="submit" disabled={busy === 'presente' || !codigo.trim()}>
+          {busy === 'presente' ? <Spinner /> : 'Resgatar presente'}
+        </Btn>
+      </form>
+      <RowList className="mb-6">
+        <Row icon="gift" title="Presentear outro casal" sub="Alguém paga, o casal resgata com um código"
+          onClick={() => nav('/presente')} />
+      </RowList>
 
       <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mt-8 mb-2">No grátis, pra sempre</p>
       <Card className="mb-4">

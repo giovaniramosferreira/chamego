@@ -29,6 +29,7 @@ const QUOTES = [
 
 const FAQ = [
   { q: 'O Chamego é grátis?', a: 'O essencial é grátis pra sempre: agenda, listas, momentos, check-in, chat e convite do par, sem prazo e sem cartão. O Chamego Juntos (R$ 14,90/mês ou R$ 89/ano por casal) abre fotos e cápsulas ilimitadas, álbuns, retrospectiva e todos os packs de conteúdo.' },
+  { q: 'Dá pra dar de presente?', a: 'Dá — e sem precisar criar conta. Você escolhe o tempo (3, 6 ou 12 meses), paga uma vez e recebe um código no email. O casal resgata quando quiser, no próprio app. O código não expira.' },
   { q: 'Posso cancelar quando quiser?', a: 'Pode, em dois toques dentro do app, e você tem 7 dias de arrependimento garantidos por lei. Cancelar não apaga nada: seu conteúdo continua lá, só os recursos pagos deixam de abrir.' },
   { q: 'Preciso de senha?', a: 'Não. Você entra com sua conta Google ou recebe um link mágico no e-mail. Sem senha pra esquecer.' },
   { q: 'Meu par precisa baixar algo?', a: 'Não — o Chamego funciona no navegador do celular e do computador. Seu par entra pelo link do convite e pronto.' },
@@ -180,6 +181,10 @@ export default function LandingPage() {
                 </ul>
                 <Link to="/entrar" className="inline-block bg-accent text-accent-ink rounded-btn px-6 py-3 font-semibold hover:bg-accent-press transition-colors">Testar 14 dias grátis</Link>
                 <p className="text-sm text-ink-3 mt-3">Sem cartão no teste. Cancele em dois toques.</p>
+                <p className="text-[.92rem] text-ink-2 mt-4 pt-4 border-t border-line">
+                  Quer dar de presente pra um casal?{' '}
+                  <Link to="/presente" className="text-accent underline">Presentear o Chamego</Link>.
+                </p>
               </div>
             </div>
           </div>
@@ -214,6 +219,7 @@ export default function LandingPage() {
             <a href="#como" className="hover:text-ink">Como funciona</a>
             <a href="#areas" className="hover:text-ink">O que tem</a>
             <a href="#preco" className="hover:text-ink">Preço</a>
+            <Link to="/presente" className="hover:text-ink">Presentear</Link>
             <a href="#faq" className="hover:text-ink">Dúvidas</a>
           </nav>
           <span className="text-sm text-ink-3">© 2026 Chamego · feito com carinho</span>

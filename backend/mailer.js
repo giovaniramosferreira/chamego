@@ -98,6 +98,24 @@ export async function sendPartnerJoined({ to, partnerName, coupleName, url }) {
   });
 }
 
+export async function sendGiftCode({ to, code, months, url }) {
+  const tempo = months === 12 ? '1 ano' : `${months} meses`;
+  return send({
+    to,
+    subject: `Seu presente de ${tempo} de Chamego 💛`,
+    text: `Presente confirmado! Entregue este código ao casal: ${code}\nEles resgatam em ${url} (ou em Configurações → Plano).`,
+    html: layout({
+      title: 'Presente confirmado 💛',
+      body: `Você deu <strong>${tempo}</strong> de Chamego Juntos.<br><br>
+        Entregue este código ao casal:<br>
+        <div style="font-size:26px;letter-spacing:2px;color:#7B2D43;margin:12px 0;"><strong>${code}</strong></div>
+        Eles resgatam pelo link abaixo ou em Configurações → Plano.`,
+      cta: { href: url, label: 'Abrir o presente' },
+      footer: 'O código vale até ser resgatado, sem prazo.',
+    }),
+  });
+}
+
 export async function sendEventReminder({ to, coupleName, events, url }) {
   const lines = events.map((e) => `• ${e.time ? `${e.time} — ` : ''}${e.title}${e.location ? ` (${e.location})` : ''}`);
   return send({

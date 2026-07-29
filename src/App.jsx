@@ -5,6 +5,7 @@ import { useSession } from './lib/session-context.js';
 import LandingPage from './pages/LandingPage.jsx';
 import EntrarPage from './pages/EntrarPage.jsx';
 import TermosPage from './pages/TermosPage.jsx';
+import PresentePage from './pages/PresentePage.jsx';
 import ConvitePage from './pages/ConvitePage.jsx';
 import ComecarFlow from './pages/app/ComecarFlow.jsx';
 import AppShell from './pages/app/AppShell.jsx';
@@ -36,6 +37,8 @@ export default function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/entrar" element={<EntrarPage />} />
             <Route path="/termos" element={<TermosPage />} />
+            <Route path="/presente" element={<PresentePage />} />
+            <Route path="/presente/:code" element={<PresentePage />} />
             <Route path="/convite/:code" element={<ConvitePage />} />
             <Route path="/app/comecar/*" element={<RequireAuth><ComecarFlow /></RequireAuth>} />
             <Route path="/app/*" element={<RequireAuth><RequireReady><AppShell /></RequireReady></RequireAuth>} />

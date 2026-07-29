@@ -43,6 +43,12 @@ services:
         sync: false
       - key: STRIPE_PRICE_ANUAL
         sync: false
+      - key: STRIPE_PRICE_PRESENTE_3M
+        sync: false
+      - key: STRIPE_PRICE_PRESENTE_6M
+        sync: false
+      - key: STRIPE_PRICE_PRESENTE_12M
+        sync: false
       - key: STRIPE_PIX
         sync: false
       - key: ADMIN_KEY

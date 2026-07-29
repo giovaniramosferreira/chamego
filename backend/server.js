@@ -9,7 +9,7 @@ import { verifyGoogleToken, createSession, sessionFromRequest, normalizeEmail, S
 import { sendMagicLink, sendInvite, sendPartnerJoined } from './mailer.js';
 import { buildIcs } from './ics.js';
 import { startNotifier } from './notifier.js';
-import { availablePlans, billingEnabled, createCheckout, createPortal, handleWebhook, TRIAL_DAYS } from './billing.js';
+import { availableGifts, availablePlans, billingEnabled, createCheckout, createGiftCheckout, createPortal, handleWebhook, TRIAL_DAYS } from './billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -681,6 +681,8 @@ app.get('/api/subscription', withCouple, (req, res) => {
       entitlements: sub.entitlements,
       trialing: sub.trialing,
       trialEndsAt: sub.trial_ends_at,
+      gifted: sub.gifted,
+      giftUntil: sub.gift_until,
       currentPeriodEnd: sub.current_period_end,
       cancelAtPeriodEnd: !!sub.cancel_at_period_end,
       trialUsed: !!sub.trial_ends_at,
@@ -735,6 +737,70 @@ app.patch('/api/subscription', withCouple, (req, res) => {
   });
 });
 
+/* ── Presente ────────────────────────────────────────────────────────────
+   Comprar não exige conta (quem presenteia costuma não ser usuário); resgatar
+   exige espaço do casal. Os meses entram num crédito separado, então o webhook
+   da assinatura nunca apaga o que foi presenteado. */
+
+app.get('/api/gift', (req, res) => {
+  res.json({ options: availableGifts(), billingEnabled: billingEnabled() });
+});
+
+app.post('/api/gift/checkout', async (req, res) => {
+  try {
+    res.json(await createGiftCheckout({
+      months: Number(req.body?.months) || 12,
+      buyerName: req.body?.buyerName || '',
+      message: req.body?.message || '',
+    }));
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Prévia do código: mostra o que o casal vai receber antes de resgatar.
+app.get('/api/gift/:code', (req, res) => {
+  const gift = db.getGiftCode(req.params.code);
+  if (!gift) return res.status(404).json({ error: 'Código não encontrado' });
+  res.json({
+    gift: {
+      code: gift.code,
+      months: gift.months,
+      status: gift.status,
+      from: gift.buyer_name || null,
+      message: gift.message || '',
+    },
+  });
+});
+
+app.post('/api/gift/:code/redeem', withCouple, (req, res) => {
+  const result = db.redeemGiftCode(req.params.code, req.couple.id, req.user.email);
+  if (!result.ok) {
+    const msg = {
+      not_found: 'Código não encontrado. Confira as letras.',
+      already_redeemed: 'Este presente já foi resgatado.',
+      void: 'Este código não está mais válido.',
+    }[result.reason];
+    return res.status(result.reason === 'not_found' ? 404 : 409).json({ error: msg });
+  }
+  db.track('presente_resgatado', { coupleId: req.couple.id, email: req.user.email, props: { months: result.months } });
+  res.json({ months: result.months, until: result.until, subscription: result.subscription });
+});
+
+// Códigos para parcerias e cortesias (cerimonialistas, fotógrafos, imprensa).
+app.post('/api/admin/gift-codes', (req, res) => {
+  const key = process.env.ADMIN_KEY;
+  if (!key || req.headers['x-admin-key'] !== key) return res.status(403).json({ error: 'Não autorizado' });
+  const quantidade = Math.min(50, Math.max(1, Number(req.body?.quantity) || 1));
+  const codes = Array.from({ length: quantidade }, () => db.createGiftCode({
+    months: Number(req.body?.months) || 3,
+    origin: req.body?.origin || 'parceria',
+    buyerName: req.body?.buyerName || null,
+    message: req.body?.message || '',
+  }).code);
+  res.json({ codes });
+});
+
 // Funil de venda (espaços, conexão do par, testes, assinantes) — ADMIN_KEY.
 app.get('/api/admin/metrics', (req, res) => {
   const key = process.env.ADMIN_KEY;
@@ -743,7 +809,8 @@ app.get('/api/admin/metrics', (req, res) => {
 });
 
 // Eventos de funil vindos da interface (lista fechada, sem dado livre).
-const CLIENT_EVENTS = ['paywall_visto', 'plano_visto', 'convite_compartilhado', 'instalou_app'];
+const CLIENT_EVENTS = ['paywall_visto', 'plano_visto', 'convite_compartilhado', 'instalou_app',
+  'contador_compartilhado', 'presente_visto'];
 app.post('/api/track', requireAuth, (req, res) => {
   const name = String(req.body?.name || '');
   if (!CLIENT_EVENTS.includes(name)) return res.status(400).json({ error: 'Evento desconhecido' });

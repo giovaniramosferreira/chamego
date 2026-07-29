@@ -21,6 +21,8 @@ export function useSubscription() {
     trialing: !!sub?.trialing,
     trialEndsAt: sub?.trialEndsAt || null,
     trialUsed: !!sub?.trialUsed,
+    gifted: !!sub?.gifted,
+    giftUntil: sub?.giftUntil || null,
     cancelAtPeriodEnd: !!sub?.cancelAtPeriodEnd,
     currentPeriodEnd: sub?.currentPeriodEnd || null,
     managed: !!sub?.managed,

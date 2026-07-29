@@ -157,3 +157,15 @@ mudou de estrutura:
   `DELETE /api/couples/:id` (confirmação digitada) — o que os Termos prometem.
 - **Erros de rede** aparecem como faixa (`ConnectionBanner`), não como lista
   vazia.
+
+**Presente**:
+Código de 10 caracteres (`gift_codes`) comprado por qualquer pessoa em
+`/presente`, sem conta, ou emitido pela operação para parcerias. O casal resgata
+e ganha meses num crédito próprio (`subscriptions.gift_until`), imune ao webhook
+da assinatura. Um código vale uma vez; presentes se acumulam.
+_Avoid_: cupom, voucher
+
+**Card do contador**:
+Imagem 1080×1920 gerada no cliente a partir do Contador de Dias, com
+compartilhamento nativo e assinatura da marca. É o canal de aquisição que mora
+dentro do produto.

@@ -65,6 +65,17 @@ O acesso é derivado do estado da assinatura no servidor; quem escreve esse
 estado é o webhook do Stripe. Detalhes em
 `docs/superpowers/specs/2026-07-28-monetizacao.md`.
 
+**Presente** (`/presente`): qualquer pessoa compra 3, 6 ou 12 meses sem criar
+conta e recebe um código por email; o casal resgata em Configurações → Plano.
+Os meses ficam num crédito separado (`subscriptions.gift_until`), então o
+webhook da assinatura nunca apaga o que foi presenteado. Códigos de parceria
+(cerimonialistas, fotógrafos, imprensa) saem de
+`POST /api/admin/gift-codes` com `ADMIN_KEY`.
+
+**Compartilhar o contador**: o Início gera um PNG 1080×1920 do contador de dias
+(`src/lib/share-card.js`) e chama o compartilhamento nativo do celular — com a
+assinatura `chamego.online` no rodapé.
+
 ## Referência de design
 Protótipos navegáveis em `design_handoff_chamego/` (landing hifi + área logada).
 Specs e planos em `docs/superpowers/`.

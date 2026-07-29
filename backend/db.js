@@ -13,6 +13,13 @@ export function generateInviteCode() {
   return code;
 }
 
+export function generateGiftCode() {
+  let code = '';
+  const bytes = crypto.randomBytes(10);
+  for (let i = 0; i < 10; i++) code += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+  return `${code.slice(0, 5)}-${code.slice(5)}`;
+}
+
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS users (
     email TEXT PRIMARY KEY,
@@ -211,6 +218,23 @@ const SCHEMA = [
     last_read_id INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (couple_id, user_email)
   )`,
+  // Presente: código comprado por alguém (ou emitido em parceria) e resgatado
+  // por um Espaço do Casal. Vive fora de `subscriptions` porque quem paga não
+  // é, necessariamente, quem usa.
+  `CREATE TABLE IF NOT EXISTS gift_codes (
+    code TEXT PRIMARY KEY,
+    months INTEGER NOT NULL DEFAULT 12,
+    status TEXT NOT NULL DEFAULT 'paid' CHECK (status IN ('paid','redeemed','void')),
+    origin TEXT NOT NULL DEFAULT 'compra',
+    buyer_email TEXT,
+    buyer_name TEXT,
+    message TEXT DEFAULT '',
+    provider_session TEXT,
+    redeemed_by_couple INTEGER,
+    redeemed_by_email TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    redeemed_at TEXT
+  )`,
   // Funil de venda: eventos próprios, sem depender de analytics de terceiros.
   `CREATE TABLE IF NOT EXISTS events_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,6 +400,9 @@ export function createDb(file) {
     'ALTER TABLE subscriptions ADD COLUMN current_period_end TEXT',
     'ALTER TABLE subscriptions ADD COLUMN trial_ends_at TEXT',
     'ALTER TABLE subscriptions ADD COLUMN cancel_at_period_end INTEGER DEFAULT 0',
+    // Meses de presente vivem em coluna própria: assim o webhook do Stripe
+    // pode reescrever o período pago sem apagar o que foi presenteado.
+    'ALTER TABLE subscriptions ADD COLUMN gift_until TEXT',
   ];
   for (const ddl of MIGRATIONS) {
     try { sqlite.prepare(ddl).run(); } catch { /* coluna já existe */ }
@@ -1208,6 +1235,7 @@ export function createDb(file) {
         current_period_end: null,
         trial_ends_at: null,
         cancel_at_period_end: 0,
+        gift_until: null,
         ...(row || {}),
       };
       const trialing = !!base.trial_ends_at && base.trial_ends_at > now;
@@ -1215,11 +1243,13 @@ export function createDb(file) {
       // "canceled" continua valendo até o fim do período já pago.
       const paid = ['active', 'past_due', 'canceled'].includes(base.status)
         && (!base.current_period_end || base.current_period_end > now);
-      const premium = trialing || paid;
+      const gifted = !!base.gift_until && base.gift_until > now;
+      const premium = trialing || paid || gifted;
       return {
         ...base,
         plan: premium ? 'premium' : 'free',
         trialing,
+        gifted,
         entitlements: premium ? ['free', 'premium'] : ['free'],
       };
     },
@@ -1233,18 +1263,19 @@ export function createDb(file) {
         subscription_id: patch.subscriptionId ?? cur.subscription_id ?? null,
         current_period_end: patch.currentPeriodEnd ?? cur.current_period_end ?? null,
         trial_ends_at: patch.trialEndsAt ?? cur.trial_ends_at ?? null,
+        gift_until: patch.giftUntil ?? cur.gift_until ?? null,
         cancel_at_period_end: (patch.cancelAtPeriodEnd ?? cur.cancel_at_period_end) ? 1 : 0,
       };
       sqlite.prepare(`INSERT INTO subscriptions
-          (couple_id, plan, entitlements, status, provider, customer_id, subscription_id, current_period_end, trial_ends_at, cancel_at_period_end, updated_at)
-        VALUES (?, 'free', '["free"]', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+          (couple_id, plan, entitlements, status, provider, customer_id, subscription_id, current_period_end, trial_ends_at, cancel_at_period_end, gift_until, updated_at)
+        VALUES (?, 'free', '["free"]', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(couple_id) DO UPDATE SET
           status=excluded.status, provider=excluded.provider, customer_id=excluded.customer_id,
           subscription_id=excluded.subscription_id, current_period_end=excluded.current_period_end,
           trial_ends_at=excluded.trial_ends_at, cancel_at_period_end=excluded.cancel_at_period_end,
-          updated_at=datetime('now')`)
+          gift_until=excluded.gift_until, updated_at=datetime('now')`)
         .run(coupleId, next.status, next.provider, next.customer_id, next.subscription_id,
-          next.current_period_end, next.trial_ends_at, next.cancel_at_period_end);
+          next.current_period_end, next.trial_ends_at, next.cancel_at_period_end, next.gift_until);
       return this.getSubscription(coupleId);
     },
     coupleByCustomerId(customerId) {
@@ -1257,6 +1288,54 @@ export function createDb(file) {
       const ends = new Date(Date.now() + days * 86_400_000).toISOString();
       this.saveSubscription(coupleId, { status: 'trialing', provider: 'trial', trialEndsAt: ends });
       return { started: true, subscription: this.getSubscription(coupleId) };
+    },
+
+    /* ── Presente: quem paga não é quem usa ────────────────────────────────
+       O código é criado quando o pagamento confirma (ou pela operação, em
+       parcerias) e resgatado por um Espaço do Casal, que ganha N meses. */
+    createGiftCode({ months = 12, origin = 'compra', buyerEmail = null, buyerName = null, message = '', session = null } = {}) {
+      const m = Math.min(24, Math.max(1, Number(months) || 12));
+      for (let i = 0; i < 5; i++) {
+        const code = generateGiftCode();
+        try {
+          sqlite.prepare(`INSERT INTO gift_codes (code, months, origin, buyer_email, buyer_name, message, provider_session)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`)
+            .run(code, m, String(origin).slice(0, 20), buyerEmail, buyerName ? String(buyerName).slice(0, 80) : null,
+              String(message).slice(0, 300), session);
+          return this.getGiftCode(code);
+        } catch { /* colisão de código, tenta outro */ }
+      }
+      throw new Error('Não conseguimos gerar o código do presente');
+    },
+    getGiftCode(code) {
+      const clean = String(code || '').trim().toUpperCase();
+      return sqlite.prepare('SELECT * FROM gift_codes WHERE code=?').get(clean)
+        || sqlite.prepare('SELECT * FROM gift_codes WHERE REPLACE(code, \'-\', \'\')=?').get(clean.replace(/-/g, ''))
+        || null;
+    },
+    giftBySession(sessionId) {
+      return sqlite.prepare('SELECT * FROM gift_codes WHERE provider_session=?').get(sessionId) || null;
+    },
+    // Soma os meses ao crédito existente (presentes se acumulam) e nunca
+    // encurta o que já estava valendo.
+    redeemGiftCode(code, coupleId, email) {
+      const gift = this.getGiftCode(code);
+      if (!gift) return { ok: false, reason: 'not_found' };
+      if (gift.status !== 'paid') return { ok: false, reason: gift.status === 'redeemed' ? 'already_redeemed' : 'void' };
+
+      const sub = this.getSubscription(coupleId);
+      const now = new Date();
+      const base = sub.gift_until && new Date(sub.gift_until) > now ? new Date(sub.gift_until) : now;
+      const until = new Date(base);
+      until.setMonth(until.getMonth() + gift.months);
+
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare(`UPDATE gift_codes SET status='redeemed', redeemed_by_couple=?, redeemed_by_email=?,
+          redeemed_at=datetime('now') WHERE code=? AND status='paid'`).run(coupleId, email, gift.code);
+        this.saveSubscription(coupleId, { giftUntil: until.toISOString() });
+      });
+      tx();
+      return { ok: true, months: gift.months, until: until.toISOString(), subscription: this.getSubscription(coupleId) };
     },
 
     /* ── Uso vs limites do plano grátis ── */
