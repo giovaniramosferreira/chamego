@@ -56,6 +56,9 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirst(request, true));
     return;
   }
+  // A sonda de conexão precisa da rede crua: respondida pelo cache, ela diria
+  // "tem internet" com o aparelho no modo avião.
+  if (url.pathname === '/api/health') return;
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request, false));
     return;

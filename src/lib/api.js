@@ -3,14 +3,61 @@
 // em vez de fingir que a lista está vazia.
 const CONNECTION_EVENT = 'chamego:connection';
 
+let offline = false;
+
+// Só avisa quando o estado vira. Antes, todo request bem-sucedido disparava
+// um evento e toda falha acusava queda — a faixa piscava à toa.
 function announce(online) {
+  if (offline === !online) return;
+  offline = !online;
   window.dispatchEvent(new CustomEvent(CONNECTION_EVENT, { detail: { online } }));
+}
+
+export function isOffline() {
+  return offline;
 }
 
 export function onConnectionChange(handler) {
   const fn = (e) => handler(e.detail.online);
   window.addEventListener(CONNECTION_EVENT, fn);
   return () => window.removeEventListener(CONNECTION_EVENT, fn);
+}
+
+// Um fetch que falhou não é prova de que a internet caiu. No iPhone, o
+// request que estava no ar quando a tela apagou (ou a aba foi pro fundo)
+// morre exatamente igual a uma queda de rede — e o app acusava "sem conexão"
+// com a tela cheia de dados carregados. Antes de acusar, pergunta ao servidor.
+let probing = null;
+
+export function probeConnection() {
+  if (probing) return probing;
+  // URL única a cada sonda: nem o cache do browser nem um service worker
+  // antigo ainda no comando conseguem responder por ela.
+  probing = fetch(`/api/health?t=${Date.now()}`, { method: 'GET', cache: 'no-store' })
+    // Servidor respondeu, mesmo que com erro: a conexão existe.
+    .then(() => announce(true))
+    .catch(() => announce(false))
+    .finally(() => { probing = null; });
+  return probing;
+}
+
+// Falha de request: decide se vale acusar queda ou se foi só um request
+// atropelado pelo sistema.
+function reportFailure(err) {
+  if (err?.name === 'AbortError') return;          // cancelado pelo próprio app
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    announce(false);                                // o sistema já sabe: é queda
+    return;
+  }
+  // Aba no fundo: o request morreu junto com ela. Quem voltar pra tela
+  // dispara a checagem de novo (ConnectionBanner cuida disso).
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  probeConnection();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('offline', () => announce(false));
+  window.addEventListener('online', () => probeConnection());
 }
 
 const UPGRADE_EVENT = 'chamego:upgrade';
@@ -54,7 +101,7 @@ export async function api(path, { method = 'GET', body } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
-    announce(false);
+    reportFailure(e);
     throw networkError(e);
   }
   announce(true);
@@ -68,7 +115,7 @@ export async function apiUpload(path, formData, method = 'POST') {
   try {
     res = await fetch(path, { method, body: formData });
   } catch (e) {
-    announce(false);
+    reportFailure(e);
     throw networkError(e);
   }
   announce(true);
