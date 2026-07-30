@@ -31,6 +31,7 @@ Sem SMTP configurado, o link mágico é impresso no console do servidor.
 | `STRIPE_WEBHOOK_SECRET` | p/ vender | valida `/api/billing/webhook` |
 | `STRIPE_PRICE_MENSAL/ANUAL` | p/ vender | IDs de preço (BRL) do painel do Stripe |
 | `ADMIN_KEY` | recomendada | cortesias e `GET /api/admin/metrics` |
+| `ANTHROPIC_API_KEY` | opcional | lê a foto da geladeira; sem ela, modo manual |
 
 ## Testes
 ```bash
@@ -54,6 +55,18 @@ Com SMTP configurado, o servidor envia a agenda da véspera (a partir das 18h) e
 o resumo semanal (domingo, a partir das 19h) — ligáveis/desligáveis em
 Configurações. A agenda também pode ser assinada no Google/Apple Agenda pelo
 feed `.ics` do espaço.
+
+## Receita de Hoje
+Responde "o que a gente come hoje?" por duas portas: a **roda** (uma receita,
+ponderada por hora, dia, clima, despensa e histórico — 3 giros/dia no grátis) e
+a **foto da geladeira** (visão → confirmação editável obrigatória → três
+receitas com ângulos diferentes). O **modo cozinha** mostra um passo por tela
+com timer, vibração e tela acesa, e termina em "cozinhamos isso" — a métrica que
+diz se a feature funciona. A **despensa** alimenta uma lista de mercado que se
+religa sozinha, aprendendo de quanto em quanto tempo cada item acaba.
+
+Sem `ANTHROPIC_API_KEY` tudo funciona: o modo foto cai no manual. Detalhes em
+`docs/superpowers/specs/2026-07-29-receita-de-hoje.md`.
 
 ## Planos
 Grátis pra sempre: agenda, listas, momentos, check-in, chat, convite, lembretes

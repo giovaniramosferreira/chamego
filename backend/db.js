@@ -235,6 +235,56 @@ const SCHEMA = [
     created_at TEXT DEFAULT (datetime('now')),
     redeemed_at TEXT
   )`,
+  /* ── Receita de Hoje ──────────────────────────────────────────────────────
+     Despensa do casal + histórico de giros + o que foi cozinhado. O
+     `outcome` de `spins` é o dado mais importante da feature: é dele que sai a
+     ponderação da roda e a prova de que ela resolve o "o que a gente come hoje". */
+  `CREATE TABLE IF NOT EXISTS pantry_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    name TEXT NOT NULL,
+    canonico TEXT NOT NULL,
+    qtd TEXT DEFAULT '',
+    cadencia_dias INTEGER,
+    silenciado INTEGER NOT NULL DEFAULT 0,
+    origem TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (couple_id, canonico)
+  )`,
+  // Histórico cru (comprou/acabou/ainda-tenho): o ritmo é derivado disso,
+  // nunca escrito à mão — assim dá para recalcular quando a heurística mudar.
+  `CREATE TABLE IF NOT EXISTS pantry_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL REFERENCES pantry_items(id),
+    tipo TEXT NOT NULL CHECK (tipo IN ('comprou','acabou','ainda-tenho')),
+    em TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS spins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL,
+    receita_id TEXT NOT NULL,
+    contexto TEXT DEFAULT '{}',
+    desfecho TEXT NOT NULL DEFAULT 'pendente'
+      CHECK (desfecho IN ('pendente','cozinhou','pulou','girou_de_novo','abandonou')),
+    criado_em TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS cooked_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL,
+    receita_id TEXT NOT NULL,
+    nota INTEGER,
+    notas TEXT DEFAULT '',
+    criado_em TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS photo_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    detectado TEXT DEFAULT '[]',
+    confirmado TEXT DEFAULT '[]',
+    criado_em TEXT DEFAULT (datetime('now'))
+  )`,
   // Funil de venda: eventos próprios, sem depender de analytics de terceiros.
   `CREATE TABLE IF NOT EXISTS events_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1050,6 +1100,121 @@ export function createDb(file) {
       if (!row?.intimacy_pin) return true; // sem PIN, sem trava
       return String(pin) === row.intimacy_pin;
     },
+    /* ── Receita de Hoje: despensa, giros e cozinhadas ────────────────────── */
+    listPantry(coupleId) {
+      const itens = sqlite.prepare('SELECT * FROM pantry_items WHERE couple_id=? ORDER BY canonico').all(coupleId);
+      for (const it of itens) {
+        it.eventos = sqlite.prepare('SELECT tipo, em FROM pantry_events WHERE item_id=? ORDER BY em, id').all(it.id);
+        it.silenciado = !!it.silenciado;
+      }
+      return itens;
+    },
+    addPantryItem(coupleId, { name, canonico, qtd = '', origem = 'manual', comprouAgora = true }) {
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare(`INSERT INTO pantry_items (couple_id, name, canonico, qtd, origem)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(couple_id, canonico) DO UPDATE SET
+            name=excluded.name, qtd=excluded.qtd, silenciado=0`)
+          .run(coupleId, String(name).slice(0, 60), canonico, String(qtd).slice(0, 30), origem);
+        const id = sqlite.prepare('SELECT id FROM pantry_items WHERE couple_id=? AND canonico=?').get(coupleId, canonico).id;
+        // Entrar na despensa é, por padrão, um "comprou": é o evento que
+        // começa a contar o ritmo daquele item.
+        if (comprouAgora) sqlite.prepare(`INSERT INTO pantry_events (item_id, tipo) VALUES (?, 'comprou')`).run(id);
+        return id;
+      });
+      const id = tx();
+      return this.listPantry(coupleId).find((i) => i.id === id);
+    },
+    pantryItem(coupleId, id) {
+      const it = sqlite.prepare('SELECT * FROM pantry_items WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!it) return null;
+      it.eventos = sqlite.prepare('SELECT tipo, em FROM pantry_events WHERE item_id=? ORDER BY em, id').all(it.id);
+      it.silenciado = !!it.silenciado;
+      return it;
+    },
+    // Feedback da lista: registra o evento e guarda a cadência recalculada.
+    pantryFeedback(coupleId, id, tipo, cadenciaDias) {
+      const it = this.pantryItem(coupleId, id);
+      if (!it) return null;
+      if (tipo === 'nao-compro-mais') {
+        sqlite.prepare('UPDATE pantry_items SET silenciado=1 WHERE id=?').run(id);
+        return this.pantryItem(coupleId, id);
+      }
+      sqlite.prepare('INSERT INTO pantry_events (item_id, tipo) VALUES (?, ?)').run(id, tipo);
+      if (cadenciaDias) sqlite.prepare('UPDATE pantry_items SET cadencia_dias=? WHERE id=?').run(cadenciaDias, id);
+      return this.pantryItem(coupleId, id);
+    },
+    deletePantryItem(coupleId, id) {
+      const it = sqlite.prepare('SELECT 1 FROM pantry_items WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!it) return false;
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare('DELETE FROM pantry_events WHERE item_id=?').run(id);
+        sqlite.prepare('DELETE FROM pantry_items WHERE id=?').run(id);
+      });
+      tx();
+      return true;
+    },
+
+    createSpin(coupleId, email, { receitaId, contexto }) {
+      const r = sqlite.prepare('INSERT INTO spins (couple_id, user_email, receita_id, contexto) VALUES (?, ?, ?, ?)')
+        .run(coupleId, email, receitaId, JSON.stringify(contexto || {}).slice(0, 4000));
+      return sqlite.prepare('SELECT * FROM spins WHERE id=?').get(r.lastInsertRowid);
+    },
+    setSpinOutcome(coupleId, id, desfecho) {
+      const ok = sqlite.prepare(`UPDATE spins SET desfecho=? WHERE id=? AND couple_id=? AND desfecho='pendente'`)
+        .run(desfecho, id, coupleId).changes > 0;
+      return ok ? sqlite.prepare('SELECT * FROM spins WHERE id=?').get(id) : null;
+    },
+    listSpins(coupleId, limite = 60) {
+      return sqlite.prepare('SELECT * FROM spins WHERE couple_id=? ORDER BY id DESC LIMIT ?').all(coupleId, limite);
+    },
+    spinsHoje(coupleId, email) {
+      return sqlite.prepare(`SELECT COUNT(*) c FROM spins
+        WHERE couple_id=? AND user_email=? AND date(criado_em)=date('now','localtime')`).get(coupleId, email).c;
+    },
+    // Sugestão que o par mandou e ainda está de pé — vira convite no Início.
+    spinPendenteDoPar(coupleId, email) {
+      return sqlite.prepare(`SELECT * FROM spins WHERE couple_id=? AND user_email!=? AND desfecho='pendente'
+        AND criado_em >= datetime('now','-6 hours') ORDER BY id DESC LIMIT 1`).get(coupleId, email) || null;
+    },
+    photoSessionsHoje(coupleId) {
+      return sqlite.prepare(`SELECT COUNT(*) c FROM photo_sessions
+        WHERE couple_id=? AND date(criado_em)=date('now','localtime')`).get(coupleId).c;
+    },
+    createPhotoSession(coupleId, detectado) {
+      const r = sqlite.prepare('INSERT INTO photo_sessions (couple_id, detectado) VALUES (?, ?)')
+        .run(coupleId, JSON.stringify(detectado || []));
+      return sqlite.prepare('SELECT * FROM photo_sessions WHERE id=?').get(r.lastInsertRowid);
+    },
+    // O que a pessoa corrigiu é dado de ajuste do prompt de visão.
+    confirmPhotoSession(coupleId, id, confirmado) {
+      sqlite.prepare('UPDATE photo_sessions SET confirmado=? WHERE id=? AND couple_id=?')
+        .run(JSON.stringify(confirmado || []), id, coupleId);
+    },
+    registrarCozinhada(coupleId, email, { receitaId, nota, notas }) {
+      const r = sqlite.prepare('INSERT INTO cooked_log (couple_id, user_email, receita_id, nota, notas) VALUES (?, ?, ?, ?, ?)')
+        .run(coupleId, email, receitaId, nota ? Number(nota) : null, String(notas || '').slice(0, 500));
+      return sqlite.prepare('SELECT * FROM cooked_log WHERE id=?').get(r.lastInsertRowid);
+    },
+    cozinhadas(coupleId, limite = 30) {
+      return sqlite.prepare('SELECT * FROM cooked_log WHERE couple_id=? ORDER BY id DESC LIMIT ?').all(coupleId, limite);
+    },
+    // Ritmo de cozinha: quantas nos últimos 7 dias e a média semanal do casal.
+    ritmoDeCozinha(coupleId) {
+      const ultimos7 = sqlite.prepare(`SELECT COUNT(*) c FROM cooked_log
+        WHERE couple_id=? AND criado_em >= datetime('now','-7 days')`).get(coupleId).c;
+      const total = sqlite.prepare('SELECT COUNT(*) c FROM cooked_log WHERE couple_id=?').get(coupleId).c;
+      const primeira = sqlite.prepare('SELECT MIN(criado_em) m FROM cooked_log WHERE couple_id=?').get(coupleId)?.m;
+      const semanas = primeira ? Math.max(1, (Date.now() - new Date(primeira).getTime()) / (7 * 86_400_000)) : 1;
+      return { ultimos7, mediaSemanal: total / semanas };
+    },
+    // Métrica-norte da feature: sessões que terminam em "cozinhamos".
+    taxaDeCozinhada(coupleId) {
+      const total = sqlite.prepare(`SELECT COUNT(*) c FROM spins WHERE couple_id=? AND desfecho!='pendente'`).get(coupleId).c;
+      const cozinhou = sqlite.prepare(`SELECT COUNT(*) c FROM spins WHERE couple_id=? AND desfecho='cozinhou'`).get(coupleId).c;
+      return { total, cozinhou, taxa: total ? cozinhou / total : 0 };
+    },
+
     /* ── Chat: leitura e não lidas (badge da tab bar) ── */
     markMessagesRead(coupleId, email, lastId) {
       const last = Number(lastId) || sqlite.prepare('SELECT MAX(id) m FROM messages WHERE couple_id=?').get(coupleId)?.m || 0;
@@ -1207,9 +1372,12 @@ export function createDb(file) {
         sqlite.prepare('DELETE FROM moment_photos WHERE moment_id IN (SELECT id FROM moments WHERE couple_id=?)').run(coupleId);
         sqlite.prepare('DELETE FROM plan_steps WHERE plan_id IN (SELECT id FROM plans WHERE couple_id=?)').run(coupleId);
         sqlite.prepare('DELETE FROM plan_attachments WHERE plan_id IN (SELECT id FROM plans WHERE couple_id=?)').run(coupleId);
+        sqlite.prepare('DELETE FROM pantry_events WHERE item_id IN (SELECT id FROM pantry_items WHERE couple_id=?)').run(coupleId);
+        sqlite.prepare('DELETE FROM pantry_items WHERE couple_id=?').run(coupleId);
         for (const t of ['events', 'lists', 'moments', 'checkins', 'goals', 'messages', 'plans', 'gifts',
           'saved_date_ideas', 'quiz_answers', 'time_capsules', 'albums', 'intimacy_sessions', 'subscriptions',
-          'message_reads', 'notifications_sent', 'events_log', 'invites', 'couple_members']) {
+          'message_reads', 'notifications_sent', 'events_log', 'spins', 'cooked_log',
+          'photo_sessions', 'invites', 'couple_members']) {
           sqlite.prepare(`DELETE FROM ${t} WHERE couple_id=?`).run(coupleId);
         }
         sqlite.prepare('DELETE FROM couples WHERE id=?').run(coupleId);

@@ -165,6 +165,20 @@ e ganha meses num crédito próprio (`subscriptions.gift_until`), imune ao webho
 da assinatura. Um código vale uma vez; presentes se acumulam.
 _Avoid_: cupom, voucher
 
+**Receita de Hoje** (`/app/cozinha`):
+Duas portas para o jantar: **roda** (uma receita, peso por hora/dia/clima/
+despensa/histórico; 3 giros/dia no grátis) e **foto** (visão → confirmação
+editável obrigatória → três ângulos). **Modo cozinha** com um passo por tela,
+timer, vibração e wake lock, terminando em "cozinhamos isso" (`cooked_log`) —
+a métrica-norte da feature. Tabelas: `pantry_items`, `pantry_events`, `spins`,
+`cooked_log`, `photo_sessions`.
+_Avoid_: cardápio, menu semanal (não é planejamento, é decisão de agora)
+
+**Despensa** (`/app/despensa`):
+O que a casa tem. Alimenta o peso da roda e a **lista de mercado proativa**, que
+aprende de quanto em quanto tempo cada item acaba ("acabou" vale mais que
+"comprou"; "ainda temos" alonga a cadência). Lista vazia é resposta válida.
+
 **Card do contador**:
 Imagem 1080×1920 gerada no cliente a partir do Contador de Dias, com
 compartilhamento nativo e assinatura da marca. É o canal de aquisição que mora

@@ -10,6 +10,11 @@ import { sendMagicLink, sendInvite, sendPartnerJoined } from './mailer.js';
 import { buildIcs } from './ics.js';
 import { startNotifier } from './notifier.js';
 import { availableGifts, availablePlans, billingEnabled, createCheckout, createGiftCheckout, createPortal, handleWebhook, TRIAL_DAYS } from './billing.js';
+import { RECEITAS, RECEITAS_POR_ID, INGREDIENTES_CONHECIDOS } from './receita/catalogo.js';
+import { girar, girosRestantes, GIROS_GRATIS_DIA } from './receita/roleta.js';
+import { compararDespensa, normalizar, rotuloFalta } from './receita/ingredientes.js';
+import { cadenciaAposFeedback, listaDoDia, melhorMomentoDeAvisar } from './receita/lista.js';
+import { extrairIngredientes, visaoDisponivel } from './receita/visao.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -645,6 +650,236 @@ app.post('/api/intimacy/unlock', withCouple, (req, res) => {
   if (!db.verifyIntimacyPin(req.couple.id, req.body?.pin)) return res.status(401).json({ error: 'Código incorreto' });
   res.json({ ok: true });
 });
+
+/* ── Receita de Hoje ─────────────────────────────────────────────────────────
+   Duas portas para "o que a gente come hoje?": sorteio e foto do que tem em
+   casa. Grátis: 3 giros e 1 foto por dia, despensa de até 15 itens. */
+
+const DESPENSA_GRATIS = 15;
+const FOTOS_GRATIS_DIA = 1;
+
+// A receita sai daqui já sabendo o que falta na casa — a interface nunca
+// promete algo que exige compra sem dizer.
+function comCobertura(receita, despensa) {
+  const c = compararDespensa(receita.ingredientes, despensa);
+  return { ...receita, cobertura: c.cobertura, temTudo: c.temTudo, falta: c.faltaEssencial, rotuloFalta: rotuloFalta(c) };
+}
+
+app.get('/api/cozinha', withCouple, (req, res) => {
+  const premium = isPremium(req.couple.id);
+  const despensa = db.listPantry(req.couple.id);
+  const parSugeriu = db.spinPendenteDoPar(req.couple.id, req.user.email);
+  res.json({
+    girosRestantes: girosRestantes(db.spinsHoje(req.couple.id, req.user.email), premium),
+    girosGratisDia: GIROS_GRATIS_DIA,
+    fotosRestantes: premium ? -1 : Math.max(0, FOTOS_GRATIS_DIA - db.photoSessionsHoje(req.couple.id)),
+    visaoDisponivel: visaoDisponivel(),
+    despensa: despensa.length,
+    limiteDespensa: premium ? -1 : DESPENSA_GRATIS,
+    premium,
+    // Sugestão que o par sorteou e ainda está de pé: convite, não notificação.
+    parSugeriu: parSugeriu ? { spinId: parSugeriu.id, receita: comCobertura(RECEITAS_POR_ID[parSugeriu.receita_id], despensa) } : null,
+    metrica: db.taxaDeCozinhada(req.couple.id),
+  });
+});
+
+// Gira e devolve UMA receita. A lista é justamente o problema que a feature mata.
+app.post('/api/cozinha/girar', withCouple, (req, res) => {
+  const premium = isPremium(req.couple.id);
+  const usados = db.spinsHoje(req.couple.id, req.user.email);
+  if (girosRestantes(usados, premium) <= 0) {
+    db.track('limite_atingido', { coupleId: req.couple.id, email: req.user.email, props: { limite: 'giros' } });
+    return res.status(402).json({
+      error: `O plano grátis dá ${GIROS_GRATIS_DIA} giros por dia. No Chamego Juntos são ilimitados.`,
+      upgrade: true, limite: 'giros',
+    });
+  }
+
+  const despensa = db.listPantry(req.couple.id);
+  const recusadas = Array.isArray(req.body?.recusadas) ? req.body.recusadas.slice(0, 20) : [];
+  const resultado = girar(RECEITAS, {
+    agora: new Date(),
+    tempC: typeof req.body?.tempC === 'number' ? req.body.tempC : undefined,
+    despensa,
+    historico: db.listSpins(req.couple.id),
+    restricoes: Array.isArray(req.body?.restricoes) ? req.body.restricoes : [],
+    recusadas,
+  });
+  if (!resultado) return res.status(404).json({ error: 'Nada combina com as restrições de vocês' });
+
+  const spin = db.createSpin(req.couple.id, req.user.email, {
+    receitaId: resultado.receita.id,
+    contexto: { motivos: resultado.motivos, pesos: resultado.pesos, hora: new Date().getHours() },
+  });
+  res.json({
+    spinId: spin.id,
+    receita: comCobertura(resultado.receita, despensa),
+    motivos: resultado.motivos,
+    girosRestantes: girosRestantes(usados + 1, premium),
+  });
+});
+
+// Desfecho do giro. É o dado mais importante da feature: sem ele não se sabe
+// se o produto resolve o problema.
+app.post('/api/cozinha/spins/:id/desfecho', withCouple, (req, res) => {
+  const desfechos = ['cozinhou', 'pulou', 'girou_de_novo', 'abandonou'];
+  const desfecho = String(req.body?.desfecho || '');
+  if (!desfechos.includes(desfecho)) return res.status(400).json({ error: 'Desfecho inválido' });
+  const spin = db.setSpinOutcome(req.couple.id, Number(req.params.id), desfecho);
+  if (!spin) return res.status(404).json({ error: 'Giro não encontrado' });
+  res.json({ spin, metrica: db.taxaDeCozinhada(req.couple.id) });
+});
+
+app.get('/api/cozinha/receitas/:id', withCouple, (req, res) => {
+  const receita = RECEITAS_POR_ID[req.params.id];
+  if (!receita) return res.status(404).json({ error: 'Receita não encontrada' });
+  res.json({ receita: comCobertura(receita, db.listPantry(req.couple.id)) });
+});
+
+// "Cozinhamos isso": fecha o giro, registra e devolve o gancho pro Momento.
+app.post('/api/cozinha/cozinhei', withCouple, (req, res) => {
+  const receita = RECEITAS_POR_ID[String(req.body?.receitaId || '')];
+  if (!receita) return res.status(404).json({ error: 'Receita não encontrada' });
+  if (req.body?.spinId) db.setSpinOutcome(req.couple.id, Number(req.body.spinId), 'cozinhou');
+  const registro = db.registrarCozinhada(req.couple.id, req.user.email, {
+    receitaId: receita.id, nota: req.body?.nota, notas: req.body?.notas,
+  });
+  db.track('cozinhou', { coupleId: req.couple.id, email: req.user.email, props: { receita: receita.id } });
+  res.json({
+    registro,
+    metrica: db.taxaDeCozinhada(req.couple.id),
+    sugestaoMomento: `Fizemos ${receita.titulo} hoje 🍳`,
+  });
+});
+
+/* Despensa */
+app.get('/api/despensa', withCouple, (req, res) => {
+  res.json({
+    itens: db.listPantry(req.couple.id),
+    conhecidos: INGREDIENTES_CONHECIDOS,
+    limite: isPremium(req.couple.id) ? -1 : DESPENSA_GRATIS,
+  });
+});
+
+app.post('/api/despensa', withCouple, (req, res) => {
+  const nomes = Array.isArray(req.body?.itens) ? req.body.itens : [req.body?.nome];
+  const limpos = nomes.map((n) => String(n || '').trim()).filter(Boolean).slice(0, 30);
+  if (!limpos.length) return res.status(400).json({ error: 'Diga o que entrou na despensa' });
+
+  const premium = isPremium(req.couple.id);
+  const atuais = db.listPantry(req.couple.id).length;
+  if (!premium && atuais + limpos.length > DESPENSA_GRATIS) {
+    db.track('limite_atingido', { coupleId: req.couple.id, email: req.user.email, props: { limite: 'despensa' } });
+    return res.status(402).json({
+      error: `A despensa grátis guarda ${DESPENSA_GRATIS} itens. No Chamego Juntos é ilimitada.`,
+      upgrade: true, limite: 'despensa',
+    });
+  }
+  for (const nome of limpos) {
+    db.addPantryItem(req.couple.id, { name: nome, canonico: normalizar(nome), origem: req.body?.origem || 'manual' });
+  }
+  res.json({ itens: db.listPantry(req.couple.id) });
+});
+
+app.post('/api/despensa/:id/feedback', withCouple, (req, res) => {
+  const tipos = ['comprou', 'acabou', 'ainda-tenho', 'nao-compro-mais'];
+  const tipo = String(req.body?.tipo || '');
+  if (!tipos.includes(tipo)) return res.status(400).json({ error: 'Resposta inválida' });
+  const item = db.pantryItem(req.couple.id, Number(req.params.id));
+  if (!item) return res.status(404).json({ error: 'Item não encontrado' });
+  // A cadência é recalculada a partir da resposta: "ainda temos" ensina.
+  const cadencia = tipo === 'nao-compro-mais' ? null : cadenciaAposFeedback(item, tipo);
+  res.json({ item: db.pantryFeedback(req.couple.id, item.id, tipo, cadencia) });
+});
+
+app.delete('/api/despensa/:id', withCouple, (req, res) => {
+  if (!db.deletePantryItem(req.couple.id, Number(req.params.id))) return res.status(404).json({ error: 'Item não encontrado' });
+  res.json({ ok: true });
+});
+
+// Lista de mercado que se religa sozinha, com o motivo de cada item.
+app.get('/api/mercado/sugestoes', withCouple, (req, res) => {
+  const ritmo = db.ritmoDeCozinha(req.couple.id);
+  const itens = db.listPantry(req.couple.id);
+  const hoje = new Date();
+  res.json({
+    sugestoes: listaDoDia(itens, {
+      hoje,
+      cozinhadasUltimos7: ritmo.ultimos7,
+      mediaSemanal: ritmo.mediaSemanal,
+    }),
+    aviso: melhorMomentoDeAvisar(itens, hoje),
+  });
+});
+
+// Foto da geladeira → itens detectados. A confirmação é obrigatória e acontece
+// na interface; aqui nada entra na despensa sozinho. O arquivo é apagado
+// depois da extração: foto de geladeira é dado sensível.
+app.post('/api/cozinha/foto', requireAuth, requireCouple, upload.single('foto'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Envie uma foto' });
+  const apagar = () => fs.promises.unlink(req.file.path).catch(() => {});
+
+  const premium = isPremium(req.couple.id);
+  if (!premium && db.photoSessionsHoje(req.couple.id) >= FOTOS_GRATIS_DIA) {
+    await apagar();
+    db.track('limite_atingido', { coupleId: req.couple.id, email: req.user.email, props: { limite: 'fotos' } });
+    return res.status(402).json({
+      error: `O plano grátis lê ${FOTOS_GRATIS_DIA} foto por dia. No Chamego Juntos são ilimitadas.`,
+      upgrade: true, limite: 'fotos',
+    });
+  }
+
+  const { disponivel, itens, erro } = await extrairIngredientes(req.file.path, req.file.mimetype);
+  await apagar();
+  const sessao = db.createPhotoSession(req.couple.id, itens);
+  res.json({
+    sessaoId: sessao.id,
+    detectado: itens,
+    visaoDisponivel: disponivel,
+    // Sem IA (ou se ela falhar) a tela de confirmação abre para digitar —
+    // a feature não depende da visão para funcionar.
+    modoManual: !disponivel || !!erro || itens.length === 0,
+  });
+});
+
+// O que o casal corrigiu vira despensa e dado de ajuste do prompt de visão.
+app.post('/api/cozinha/foto/:id/confirmar', withCouple, (req, res) => {
+  const confirmados = (Array.isArray(req.body?.itens) ? req.body.itens : [])
+    .map((n) => String(n || '').trim()).filter(Boolean).slice(0, 30);
+  db.confirmPhotoSession(req.couple.id, Number(req.params.id), confirmados);
+
+  const premium = isPremium(req.couple.id);
+  const atuais = db.listPantry(req.couple.id).length;
+  const cabe = premium ? confirmados : confirmados.slice(0, Math.max(0, DESPENSA_GRATIS - atuais));
+  for (const nome of cabe) {
+    db.addPantryItem(req.couple.id, { name: nome, canonico: normalizar(nome), origem: 'foto' });
+  }
+  const despensa = db.listPantry(req.couple.id);
+  res.json({
+    itens: despensa,
+    ignorados: confirmados.length - cabe.length,
+    // Três ângulos diferentes, como manda a spec: a mais rápida, a que
+    // aproveita mais do que tem, e uma que ninguém pensaria.
+    opcoes: tresAngulos(despensa),
+  });
+});
+
+// Três receitas com ângulos distintos — nunca três variações da mesma ideia.
+function tresAngulos(despensa) {
+  const comDados = RECEITAS.map((r) => comCobertura(r, despensa)).filter((r) => r.cobertura > 0.3);
+  const porTempo = [...comDados].sort((a, b) => a.tempoMin - b.tempoMin);
+  const porCobertura = [...comDados].sort((a, b) => b.cobertura - a.cobertura || a.tempoMin - b.tempoMin);
+  const rapida = porTempo[0];
+  const completa = porCobertura.find((r) => r.id !== rapida?.id);
+  const inesperada = [...comDados]
+    .sort((a, b) => b.dificuldade - a.dificuldade || b.tempoMin - a.tempoMin)
+    .find((r) => r.id !== rapida?.id && r.id !== completa?.id);
+  return [
+    rapida && { angulo: 'A mais rápida', receita: rapida },
+    completa && { angulo: 'Aproveita mais do que vocês têm', receita: completa },
+    inesperada && { angulo: 'A inesperada', receita: inesperada },
+  ].filter(Boolean);
+}
 
 /* ── Calendário: o Chamego dentro do calendário que já é usado ───────────── */
 

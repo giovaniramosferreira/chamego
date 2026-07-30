@@ -81,6 +81,8 @@ export default function ListasTab() {
       {/* O "+" da barra adiciona itens; criar uma lista nova mora aqui.
           Desejos e presentes têm um endereço só — daqui você vai até ele. */}
       <RowList className="mt-4">
+        <Row icon="heart" title="O que a gente come hoje?" sub="Sorteia uma receita ou fotografa a geladeira"
+          onClick={() => nav('/app/cozinha')} />
         <Row icon="plus" title="Criar nova lista" sub="Compartilhada ou só sua" onClick={() => setSheet(true)} />
         <Row icon="gift" title="Wishlist de vocês" sub="Desejos e presentes ficam em Datas & presentes" onClick={() => nav('/app/presentes')} />
       </RowList>

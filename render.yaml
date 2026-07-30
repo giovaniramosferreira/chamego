@@ -53,3 +53,5 @@ services:
         sync: false
       - key: ADMIN_KEY
         generateValue: true
+      - key: ANTHROPIC_API_KEY
+        sync: false

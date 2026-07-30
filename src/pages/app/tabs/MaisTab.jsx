@@ -16,6 +16,13 @@ const FEATURES = [
     ],
   },
   {
+    group: 'Comer',
+    items: [
+      { to: '/app/cozinha', icon: 'heart', title: 'O que a gente come hoje?', sub: 'Uma receita, sem escolher' },
+      { to: '/app/despensa', icon: 'shopping', title: 'Despensa e mercado', sub: 'O que tem em casa e o que está acabando' },
+    ],
+  },
+  {
     group: 'Guardar',
     items: [
       { to: '/app/albuns', icon: 'image', title: 'Álbuns', sub: 'As fotos de vocês agrupadas' },
