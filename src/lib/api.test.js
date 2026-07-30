@@ -39,7 +39,8 @@ describe('detecção de conexão', () => {
 
     await expect(mod.api('/api/badges')).rejects.toThrow(/Sem conexão/);
     await vi.waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
-    expect(globalThis.fetch.mock.calls[1][0]).toBe('/api/health');
+    // Sonda com URL única: cache e service worker não respondem por ela.
+    expect(globalThis.fetch.mock.calls[1][0]).toMatch(/^\/api\/health\?t=\d+$/);
     expect(events).toEqual([]);
     expect(mod.isOffline()).toBe(false);
   });

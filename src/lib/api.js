@@ -31,7 +31,9 @@ let probing = null;
 
 export function probeConnection() {
   if (probing) return probing;
-  probing = fetch('/api/health', { method: 'GET', cache: 'no-store' })
+  // URL única a cada sonda: nem o cache do browser nem um service worker
+  // antigo ainda no comando conseguem responder por ela.
+  probing = fetch(`/api/health?t=${Date.now()}`, { method: 'GET', cache: 'no-store' })
     // Servidor respondeu, mesmo que com erro: a conexão existe.
     .then(() => announce(true))
     .catch(() => announce(false))
