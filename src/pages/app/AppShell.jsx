@@ -60,11 +60,19 @@ export default function AppShell() {
     api('/api/badges').then(setBadges).catch(() => {});
   }, []);
 
-  // Mensagem nova precisa aparecer sem abrir o chat.
+  // Mensagem nova precisa aparecer sem abrir o chat. Mas o pulso só bate com
+  // o app à vista: request no ar quando a tela apaga morre junto com ela, e
+  // o app lia isso como internet caída.
   useEffect(() => {
-    loadBadges();
-    const t = setInterval(loadBadges, 20_000);
-    return () => clearInterval(t);
+    const visible = () => document.visibilityState === 'visible';
+    const tick = () => { if (visible()) loadBadges(); };
+    tick();
+    const t = setInterval(tick, 20_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, [loadBadges, location.pathname]);
 
   return (

@@ -40,10 +40,16 @@ export default function ChatScreen({ onRead }) {
     } catch { /* ignora falha de rede momentânea */ }
   }, [msgs, onRead]);
 
+  // Pulso de 4s só com o chat à vista — no fundo o request morre com a aba.
   useEffect(() => {
-    poll();
-    const t = setInterval(poll, 4000);
-    return () => clearInterval(t);
+    const tick = () => { if (document.visibilityState === 'visible') poll(); };
+    tick();
+    const t = setInterval(tick, 4000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, [poll]);
 
   async function send(e) {
