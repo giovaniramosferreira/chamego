@@ -7,6 +7,22 @@ function announce(online) {
   window.dispatchEvent(new CustomEvent(CONNECTION_EVENT, { detail: { online } }));
 }
 
+// Um fetch pode falhar sem a internet ter caído: o iOS cancela requisições
+// quando a aba vai pro fundo ou volta do cache, e isso chegava aqui como
+// "sem conexão". Antes de acusar queda, confirmamos com uma sonda barata.
+let sonda = null;
+function servidorResponde() {
+  if (!sonda) {
+    sonda = fetch('/api/health', { cache: 'no-store' })
+      .then((r) => r.ok)
+      .catch(() => false)
+      // Solta assim que responde: guardar o resultado faria a próxima falha
+      // ser julgada por uma sonda velha.
+      .finally(() => { sonda = null; });
+  }
+  return sonda;
+}
+
 export function onConnectionChange(handler) {
   const fn = (e) => handler(e.detail.online);
   window.addEventListener(CONNECTION_EVENT, fn);
@@ -54,11 +70,18 @@ export async function api(path, { method = 'GET', body } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
-    announce(false);
+    await avisarSeCaiu();
     throw networkError(e);
   }
   announce(true);
   return parse(res);
+}
+
+// Só acusa queda depois de confirmar. Com a aba escondida nem tenta: a
+// requisição foi cancelada pelo sistema, não pela rede.
+async function avisarSeCaiu() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+  announce(await servidorResponde());
 }
 
 // Upload multipart (fotos, avatar). Não define Content-Type: o browser
@@ -68,7 +91,7 @@ export async function apiUpload(path, formData, method = 'POST') {
   try {
     res = await fetch(path, { method, body: formData });
   } catch (e) {
-    announce(false);
+    await avisarSeCaiu();
     throw networkError(e);
   }
   announce(true);

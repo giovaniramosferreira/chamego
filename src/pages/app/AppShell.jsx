@@ -69,9 +69,9 @@ export default function AppShell() {
 
   return (
     <div className="min-h-screen bg-bg flex justify-center">
-      <ConnectionBanner />
       <UpgradeGate />
       <div className="w-full max-w-[430px] flex flex-col min-h-screen">
+        <div className="px-5"><ConnectionBanner /></div>
         <main className={`flex-1 px-5 screen-enter ${hideNav ? '' : 'pb-28'}`}>
           <Routes>
             <Route index element={<InicioTab />} />

@@ -55,6 +55,16 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), asyn
 });
 
 app.use(express.json());
+
+// Dado de casal não pode ficar no cache do navegador: além de privacidade,
+// era o que fazia o app parecer online durante uma queda (o Chrome servia
+// /api do próprio cache). O cache offline continua existindo, mas é o nosso,
+// no service worker, que marca a resposta como velha.
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d' }));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));

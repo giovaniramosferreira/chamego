@@ -25,6 +25,17 @@ function greeting() {
   if (h < 18) return 'Boa tarde';
   return 'Boa noite';
 }
+// Um aniversário de novembro embaixo de "Pra hoje" é promessa falsa. O título
+// só diz "hoje" quando existe algo de hoje ou de amanhã na lista.
+function tituloDaLista(data) {
+  if (!data) return 'Pra hoje';
+  const hoje = new Date().toLocaleDateString('en-CA');
+  const amanha = new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA');
+  const temAgora = data.events.some((e) => e.date === hoje || e.date === amanha)
+    || data.pending.length > 0 || !data.checkedIn;
+  return temAgora ? 'Pra hoje' : 'Próximos';
+}
+
 function eventDateLabel(iso) {
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA');
@@ -111,7 +122,7 @@ export default function InicioTab() {
         </Card>
       )}
 
-      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">Pra hoje</p>
+      <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-2">{tituloDaLista(data)}</p>
       {data === null ? (
         <div className="py-8 text-center"><Spinner /></div>
       ) : (
