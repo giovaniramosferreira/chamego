@@ -1,7 +1,11 @@
 // Service worker mínimo: instalável na tela de início e com casca offline.
-// Estratégia: network-first para navegação e API (dado de casal precisa ser
-// fresco), cache-first para estáticos com hash e para as fotos enviadas.
-const CACHE = 'chamego-v1';
+// Estratégia: a casca do app abre offline; **a API nunca sai do cache**.
+//
+// Servir /api do cache parecia gentileza e era mentira: mostrava o check-in de
+// ontem como se fosse de hoje e, pior, fazia o app achar que estava online
+// durante uma queda (nada falhava, então a faixa de "sem conexão" nunca subia).
+// Melhor deixar a chamada falhar e avisar.
+const CACHE = 'chamego-v3';
 const SHELL = ['/', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
@@ -16,21 +20,18 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-async function networkFirst(request, fallbackToShell) {
+// Navegação: tenta a rede e cai na casca guardada, para o app abrir offline.
+async function navegacao(request) {
   try {
     const res = await fetch(request);
-    if (res.ok && request.method === 'GET') {
+    if (res.ok) {
       const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+      caches.open(CACHE).then((c) => c.put('/', copy)).catch(() => {});
     }
     return res;
   } catch (err) {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    if (fallbackToShell) {
-      const shell = await caches.match('/');
-      if (shell) return shell;
-    }
+    const shell = await caches.match('/');
+    if (shell) return shell;
     throw err;
   }
 }
@@ -53,13 +54,12 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirst(request, true));
+    event.respondWith(navegacao(request));
     return;
   }
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirst(request, false));
-    return;
-  }
+  // /api passa direto: sem cache, sem intermediário. Se a rede caiu, a
+  // chamada falha e o app mostra a faixa — que é a verdade.
+  if (url.pathname.startsWith('/api/')) return;
   if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/uploads/')) {
     event.respondWith(cacheFirst(request));
   }
