@@ -13,11 +13,25 @@ export function onConnectionChange(handler) {
   return () => window.removeEventListener(CONNECTION_EVENT, fn);
 }
 
+const UPGRADE_EVENT = 'chamego:upgrade';
+
+// Limite do plano grátis (402) não é erro de sistema: é uma conversa de venda.
+// O app abre o paywall com a mensagem do servidor em vez de um alerta seco.
+export function onUpgradeNeeded(handler) {
+  const fn = (e) => handler(e.detail);
+  window.addEventListener(UPGRADE_EVENT, fn);
+  return () => window.removeEventListener(UPGRADE_EVENT, fn);
+}
+
 async function parse(res) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || 'Algo deu errado. Tente de novo.');
     err.status = res.status;
+    if (res.status === 402 && data.upgrade) {
+      err.upgrade = true;
+      window.dispatchEvent(new CustomEvent(UPGRADE_EVENT, { detail: { message: data.error, limite: data.limite } }));
+    }
     throw err;
   }
   return data;

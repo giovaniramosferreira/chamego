@@ -5,6 +5,7 @@ import { Badge } from '../../ui/kit.jsx';
 import { api } from '../../lib/api.js';
 import QuickAdd from '../../components/QuickAdd.jsx';
 import ConnectionBanner from '../../components/ConnectionBanner.jsx';
+import UpgradeGate from '../../components/UpgradeGate.jsx';
 import InicioTab from './tabs/InicioTab.jsx';
 import ConfigTab from './tabs/ConfigTab.jsx';
 import AgendaTab from './tabs/AgendaTab.jsx';
@@ -13,6 +14,10 @@ import ListaDetail from './tabs/ListaDetail.jsx';
 import MomentosTab from './tabs/MomentosTab.jsx';
 import VocesTab from './tabs/VocesTab.jsx';
 import MaisTab from './tabs/MaisTab.jsx';
+import PlanoTab from './tabs/PlanoTab.jsx';
+import CozinhaTab from './tabs/CozinhaTab.jsx';
+import ReceitaDetail from './tabs/ReceitaDetail.jsx';
+import DespensaTab from './tabs/DespensaTab.jsx';
 import ChatScreen from './tabs/ChatScreen.jsx';
 import PlanosTab, { PlanoDetail } from './tabs/PlanosTab.jsx';
 import PresentesTab, { PresenteDetail } from './tabs/PresentesTab.jsx';
@@ -44,7 +49,9 @@ function contextFromPath(pathname) {
 
 export default function AppShell() {
   const location = useLocation();
-  const hideNav = location.pathname === '/app/voces/chat';
+  // Chat e modo cozinha são telas de foco: a tab bar sai da frente.
+  const hideNav = location.pathname === '/app/voces/chat'
+    || (location.pathname.startsWith('/app/cozinha/') && location.search.includes('modo=cozinha'));
   const isTab = TABS.some((t) => t.path === location.pathname);
   const [adding, setAdding] = useState(false);
   const [badges, setBadges] = useState({ unread: 0 });
@@ -63,6 +70,7 @@ export default function AppShell() {
   return (
     <div className="min-h-screen bg-bg flex justify-center">
       <ConnectionBanner />
+      <UpgradeGate />
       <div className="w-full max-w-[430px] flex flex-col min-h-screen">
         <main className={`flex-1 px-5 screen-enter ${hideNav ? '' : 'pb-28'}`}>
           <Routes>
@@ -74,6 +82,10 @@ export default function AppShell() {
             <Route path="voces" element={<VocesTab />} />
             <Route path="voces/chat" element={<ChatScreen onRead={loadBadges} />} />
             <Route path="mais" element={<MaisTab />} />
+            <Route path="plano" element={<PlanoTab />} />
+            <Route path="cozinha" element={<CozinhaTab />} />
+            <Route path="cozinha/:id" element={<ReceitaDetail />} />
+            <Route path="despensa" element={<DespensaTab />} />
             <Route path="planos" element={<PlanosTab />} />
             <Route path="planos/:id" element={<PlanoDetail />} />
             <Route path="presentes" element={<PresentesTab />} />

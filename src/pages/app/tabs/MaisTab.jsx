@@ -16,6 +16,13 @@ const FEATURES = [
     ],
   },
   {
+    group: 'Comer',
+    items: [
+      { to: '/app/cozinha', icon: 'heart', title: 'O que a gente come hoje?', sub: 'Uma receita, sem escolher' },
+      { to: '/app/despensa', icon: 'shopping', title: 'Despensa e mercado', sub: 'O que tem em casa e o que está acabando' },
+    ],
+  },
+  {
     group: 'Guardar',
     items: [
       { to: '/app/albuns', icon: 'image', title: 'Álbuns', sub: 'As fotos de vocês agrupadas' },
@@ -57,6 +64,7 @@ export default function MaisTab() {
       ))}
 
       <RowList className="mb-6">
+        <Row icon="star" title="Plano de vocês" sub="Grátis pra sempre + o que o Chamego Juntos abre" onClick={() => nav('/app/plano')} />
         <Row icon="settings" title="Configurações" sub="Perfil, espaço, avisos e dados" onClick={() => nav('/app/config')} />
       </RowList>
     </div>

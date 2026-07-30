@@ -96,8 +96,11 @@ Espaço do Casal. Tabelas: `plans`, `plan_steps`, `plan_attachments`, `gifts`,
   quando os dois respondem. Trilhas `premium` travadas por entitlement.
 - **Cápsula do Tempo** (`/app/capsula`): mensagem/foto/áudio selada até uma data
   (conteúdo escondido no servidor até lá), com recorrência anual.
-- **Premium**: `subscriptions.entitlements` libera recursos; **sem gateway de
-  pagamento ainda** — ativação via `PATCH /api/subscription` (interruptor manual).
+- **Chamego Juntos** (plano pago): assinatura por Espaço do Casal, cobrada pelo
+  Stripe. O direito de uso é derivado (teste vigente ou período pago) e escrito
+  só pelo webhook assinado — o cliente nunca concede acesso a si mesmo.
+  Limites do grátis: 30 fotos, 3 cápsulas, 1 álbum. Exportar dados é sempre
+  grátis. Ver `docs/superpowers/specs/2026-07-28-monetizacao.md`.
 
 ### F2 (aba Vocês → seção "Cuidar")
 
@@ -154,3 +157,29 @@ mudou de estrutura:
   `DELETE /api/couples/:id` (confirmação digitada) — o que os Termos prometem.
 - **Erros de rede** aparecem como faixa (`ConnectionBanner`), não como lista
   vazia.
+
+**Presente**:
+Código de 10 caracteres (`gift_codes`) comprado por qualquer pessoa em
+`/presente`, sem conta, ou emitido pela operação para parcerias. O casal resgata
+e ganha meses num crédito próprio (`subscriptions.gift_until`), imune ao webhook
+da assinatura. Um código vale uma vez; presentes se acumulam.
+_Avoid_: cupom, voucher
+
+**Receita de Hoje** (`/app/cozinha`):
+Duas portas para o jantar: **roda** (uma receita, peso por hora/dia/clima/
+despensa/histórico; 3 giros/dia no grátis) e **foto** (visão → confirmação
+editável obrigatória → três ângulos). **Modo cozinha** com um passo por tela,
+timer, vibração e wake lock, terminando em "cozinhamos isso" (`cooked_log`) —
+a métrica-norte da feature. Tabelas: `pantry_items`, `pantry_events`, `spins`,
+`cooked_log`, `photo_sessions`.
+_Avoid_: cardápio, menu semanal (não é planejamento, é decisão de agora)
+
+**Despensa** (`/app/despensa`):
+O que a casa tem. Alimenta o peso da roda e a **lista de mercado proativa**, que
+aprende de quanto em quanto tempo cada item acaba ("acabou" vale mais que
+"comprou"; "ainda temos" alonga a cadência). Lista vazia é resposta válida.
+
+**Card do contador**:
+Imagem 1080×1920 gerada no cliente a partir do Contador de Dias, com
+compartilhamento nativo e assinatura da marca. É o canal de aquisição que mora
+dentro do produto.

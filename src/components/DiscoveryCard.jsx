@@ -10,8 +10,10 @@ const DISMISSED = 'chamego:discovery-dismissed';
 // Um recurso por vez, escolhido pelo momento do casal: é assim que Quiz,
 // Resumo, Conquistas e Conexão voltam a existir sem virar menu gigante.
 // Domingo mostra o resumo; sem par, mostra o que dá pra fazer sozinho(a).
-function pick({ partner, weekday, hasMoments }) {
+function pick({ partner, weekday, hasMoments, hora }) {
   const options = [
+    // Perto do jantar, a pergunta do dia é uma só.
+    { id: 'jantar', when: hora >= 17 && hora <= 21, icon: 'heart', title: 'O que a gente come hoje?', text: 'Gira a roda e sai uma receita — sem escolher, sem rolar feed.', to: '/app/cozinha', cta: 'Girar' },
     { id: 'resumo', when: weekday === 0, icon: 'calendar', title: 'O resumo da semana saiu', text: 'Veja a semana de vocês em números e destaques.', to: '/app/resumo', cta: 'Ver resumo' },
     { id: 'quiz', when: !!partner, icon: 'heart', title: 'Quiz do casal', text: 'Respondam separados e vejam o quanto combinam.', to: '/app/quiz', cta: 'Jogar' },
     { id: 'intimidade', when: !!partner, icon: 'shield', title: 'Conversas guiadas', text: 'Uma carta por vez, no ritmo de vocês — com trava por PIN.', to: '/app/intimidade', cta: 'Abrir' },
@@ -36,7 +38,7 @@ export default function DiscoveryCard() {
     api('/api/moments').then((d) => setHasMoments((d.moments || []).length > 0)).catch(() => {});
   }, []);
 
-  const item = useMemo(() => pick({ partner, weekday: new Date().getDay(), hasMoments }), [partner, hasMoments]);
+  const item = useMemo(() => pick({ partner, weekday: new Date().getDay(), hasMoments, hora: new Date().getHours() }), [partner, hasMoments]);
 
   if (dismissed || !item) return null;
 

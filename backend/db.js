@@ -13,6 +13,13 @@ export function generateInviteCode() {
   return code;
 }
 
+export function generateGiftCode() {
+  let code = '';
+  const bytes = crypto.randomBytes(10);
+  for (let i = 0; i < 10; i++) code += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+  return `${code.slice(0, 5)}-${code.slice(5)}`;
+}
+
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS users (
     email TEXT PRIMARY KEY,
@@ -211,6 +218,82 @@ const SCHEMA = [
     last_read_id INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (couple_id, user_email)
   )`,
+  // Presente: código comprado por alguém (ou emitido em parceria) e resgatado
+  // por um Espaço do Casal. Vive fora de `subscriptions` porque quem paga não
+  // é, necessariamente, quem usa.
+  `CREATE TABLE IF NOT EXISTS gift_codes (
+    code TEXT PRIMARY KEY,
+    months INTEGER NOT NULL DEFAULT 12,
+    status TEXT NOT NULL DEFAULT 'paid' CHECK (status IN ('paid','redeemed','void')),
+    origin TEXT NOT NULL DEFAULT 'compra',
+    buyer_email TEXT,
+    buyer_name TEXT,
+    message TEXT DEFAULT '',
+    provider_session TEXT,
+    redeemed_by_couple INTEGER,
+    redeemed_by_email TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    redeemed_at TEXT
+  )`,
+  /* ── Receita de Hoje ──────────────────────────────────────────────────────
+     Despensa do casal + histórico de giros + o que foi cozinhado. O
+     `outcome` de `spins` é o dado mais importante da feature: é dele que sai a
+     ponderação da roda e a prova de que ela resolve o "o que a gente come hoje". */
+  `CREATE TABLE IF NOT EXISTS pantry_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    name TEXT NOT NULL,
+    canonico TEXT NOT NULL,
+    qtd TEXT DEFAULT '',
+    cadencia_dias INTEGER,
+    silenciado INTEGER NOT NULL DEFAULT 0,
+    origem TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (couple_id, canonico)
+  )`,
+  // Histórico cru (comprou/acabou/ainda-tenho): o ritmo é derivado disso,
+  // nunca escrito à mão — assim dá para recalcular quando a heurística mudar.
+  `CREATE TABLE IF NOT EXISTS pantry_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL REFERENCES pantry_items(id),
+    tipo TEXT NOT NULL CHECK (tipo IN ('comprou','acabou','ainda-tenho')),
+    em TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS spins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL,
+    receita_id TEXT NOT NULL,
+    contexto TEXT DEFAULT '{}',
+    desfecho TEXT NOT NULL DEFAULT 'pendente'
+      CHECK (desfecho IN ('pendente','cozinhou','pulou','girou_de_novo','abandonou')),
+    criado_em TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS cooked_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL,
+    receita_id TEXT NOT NULL,
+    nota INTEGER,
+    notas TEXT DEFAULT '',
+    criado_em TEXT DEFAULT (datetime('now'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS photo_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    detectado TEXT DEFAULT '[]',
+    confirmado TEXT DEFAULT '[]',
+    criado_em TEXT DEFAULT (datetime('now'))
+  )`,
+  // Funil de venda: eventos próprios, sem depender de analytics de terceiros.
+  `CREATE TABLE IF NOT EXISTS events_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER,
+    user_email TEXT,
+    name TEXT NOT NULL,
+    props TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`,
   // Idempotência dos emails automáticos: uma linha por (casal, tipo, chave).
   `CREATE TABLE IF NOT EXISTS notifications_sent (
     couple_id INTEGER NOT NULL REFERENCES couples(id),
@@ -359,6 +442,17 @@ export function createDb(file) {
     "ALTER TABLE albums ADD COLUMN caption TEXT DEFAULT ''",
     // Feed .ics do casal: token público (só leitura de eventos compartilhados).
     'ALTER TABLE couples ADD COLUMN calendar_token TEXT',
+    // Cobrança: o estado da assinatura vem do provedor (Stripe), nunca do cliente.
+    "ALTER TABLE subscriptions ADD COLUMN status TEXT DEFAULT 'free'",
+    'ALTER TABLE subscriptions ADD COLUMN provider TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN customer_id TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN subscription_id TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN current_period_end TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN trial_ends_at TEXT',
+    'ALTER TABLE subscriptions ADD COLUMN cancel_at_period_end INTEGER DEFAULT 0',
+    // Meses de presente vivem em coluna própria: assim o webhook do Stripe
+    // pode reescrever o período pago sem apagar o que foi presenteado.
+    'ALTER TABLE subscriptions ADD COLUMN gift_until TEXT',
   ];
   for (const ddl of MIGRATIONS) {
     try { sqlite.prepare(ddl).run(); } catch { /* coluna já existe */ }
@@ -1006,6 +1100,121 @@ export function createDb(file) {
       if (!row?.intimacy_pin) return true; // sem PIN, sem trava
       return String(pin) === row.intimacy_pin;
     },
+    /* ── Receita de Hoje: despensa, giros e cozinhadas ────────────────────── */
+    listPantry(coupleId) {
+      const itens = sqlite.prepare('SELECT * FROM pantry_items WHERE couple_id=? ORDER BY canonico').all(coupleId);
+      for (const it of itens) {
+        it.eventos = sqlite.prepare('SELECT tipo, em FROM pantry_events WHERE item_id=? ORDER BY em, id').all(it.id);
+        it.silenciado = !!it.silenciado;
+      }
+      return itens;
+    },
+    addPantryItem(coupleId, { name, canonico, qtd = '', origem = 'manual', comprouAgora = true }) {
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare(`INSERT INTO pantry_items (couple_id, name, canonico, qtd, origem)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(couple_id, canonico) DO UPDATE SET
+            name=excluded.name, qtd=excluded.qtd, silenciado=0`)
+          .run(coupleId, String(name).slice(0, 60), canonico, String(qtd).slice(0, 30), origem);
+        const id = sqlite.prepare('SELECT id FROM pantry_items WHERE couple_id=? AND canonico=?').get(coupleId, canonico).id;
+        // Entrar na despensa é, por padrão, um "comprou": é o evento que
+        // começa a contar o ritmo daquele item.
+        if (comprouAgora) sqlite.prepare(`INSERT INTO pantry_events (item_id, tipo) VALUES (?, 'comprou')`).run(id);
+        return id;
+      });
+      const id = tx();
+      return this.listPantry(coupleId).find((i) => i.id === id);
+    },
+    pantryItem(coupleId, id) {
+      const it = sqlite.prepare('SELECT * FROM pantry_items WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!it) return null;
+      it.eventos = sqlite.prepare('SELECT tipo, em FROM pantry_events WHERE item_id=? ORDER BY em, id').all(it.id);
+      it.silenciado = !!it.silenciado;
+      return it;
+    },
+    // Feedback da lista: registra o evento e guarda a cadência recalculada.
+    pantryFeedback(coupleId, id, tipo, cadenciaDias) {
+      const it = this.pantryItem(coupleId, id);
+      if (!it) return null;
+      if (tipo === 'nao-compro-mais') {
+        sqlite.prepare('UPDATE pantry_items SET silenciado=1 WHERE id=?').run(id);
+        return this.pantryItem(coupleId, id);
+      }
+      sqlite.prepare('INSERT INTO pantry_events (item_id, tipo) VALUES (?, ?)').run(id, tipo);
+      if (cadenciaDias) sqlite.prepare('UPDATE pantry_items SET cadencia_dias=? WHERE id=?').run(cadenciaDias, id);
+      return this.pantryItem(coupleId, id);
+    },
+    deletePantryItem(coupleId, id) {
+      const it = sqlite.prepare('SELECT 1 FROM pantry_items WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!it) return false;
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare('DELETE FROM pantry_events WHERE item_id=?').run(id);
+        sqlite.prepare('DELETE FROM pantry_items WHERE id=?').run(id);
+      });
+      tx();
+      return true;
+    },
+
+    createSpin(coupleId, email, { receitaId, contexto }) {
+      const r = sqlite.prepare('INSERT INTO spins (couple_id, user_email, receita_id, contexto) VALUES (?, ?, ?, ?)')
+        .run(coupleId, email, receitaId, JSON.stringify(contexto || {}).slice(0, 4000));
+      return sqlite.prepare('SELECT * FROM spins WHERE id=?').get(r.lastInsertRowid);
+    },
+    setSpinOutcome(coupleId, id, desfecho) {
+      const ok = sqlite.prepare(`UPDATE spins SET desfecho=? WHERE id=? AND couple_id=? AND desfecho='pendente'`)
+        .run(desfecho, id, coupleId).changes > 0;
+      return ok ? sqlite.prepare('SELECT * FROM spins WHERE id=?').get(id) : null;
+    },
+    listSpins(coupleId, limite = 60) {
+      return sqlite.prepare('SELECT * FROM spins WHERE couple_id=? ORDER BY id DESC LIMIT ?').all(coupleId, limite);
+    },
+    spinsHoje(coupleId, email) {
+      return sqlite.prepare(`SELECT COUNT(*) c FROM spins
+        WHERE couple_id=? AND user_email=? AND date(criado_em)=date('now','localtime')`).get(coupleId, email).c;
+    },
+    // Sugestão que o par mandou e ainda está de pé — vira convite no Início.
+    spinPendenteDoPar(coupleId, email) {
+      return sqlite.prepare(`SELECT * FROM spins WHERE couple_id=? AND user_email!=? AND desfecho='pendente'
+        AND criado_em >= datetime('now','-6 hours') ORDER BY id DESC LIMIT 1`).get(coupleId, email) || null;
+    },
+    photoSessionsHoje(coupleId) {
+      return sqlite.prepare(`SELECT COUNT(*) c FROM photo_sessions
+        WHERE couple_id=? AND date(criado_em)=date('now','localtime')`).get(coupleId).c;
+    },
+    createPhotoSession(coupleId, detectado) {
+      const r = sqlite.prepare('INSERT INTO photo_sessions (couple_id, detectado) VALUES (?, ?)')
+        .run(coupleId, JSON.stringify(detectado || []));
+      return sqlite.prepare('SELECT * FROM photo_sessions WHERE id=?').get(r.lastInsertRowid);
+    },
+    // O que a pessoa corrigiu é dado de ajuste do prompt de visão.
+    confirmPhotoSession(coupleId, id, confirmado) {
+      sqlite.prepare('UPDATE photo_sessions SET confirmado=? WHERE id=? AND couple_id=?')
+        .run(JSON.stringify(confirmado || []), id, coupleId);
+    },
+    registrarCozinhada(coupleId, email, { receitaId, nota, notas }) {
+      const r = sqlite.prepare('INSERT INTO cooked_log (couple_id, user_email, receita_id, nota, notas) VALUES (?, ?, ?, ?, ?)')
+        .run(coupleId, email, receitaId, nota ? Number(nota) : null, String(notas || '').slice(0, 500));
+      return sqlite.prepare('SELECT * FROM cooked_log WHERE id=?').get(r.lastInsertRowid);
+    },
+    cozinhadas(coupleId, limite = 30) {
+      return sqlite.prepare('SELECT * FROM cooked_log WHERE couple_id=? ORDER BY id DESC LIMIT ?').all(coupleId, limite);
+    },
+    // Ritmo de cozinha: quantas nos últimos 7 dias e a média semanal do casal.
+    ritmoDeCozinha(coupleId) {
+      const ultimos7 = sqlite.prepare(`SELECT COUNT(*) c FROM cooked_log
+        WHERE couple_id=? AND criado_em >= datetime('now','-7 days')`).get(coupleId).c;
+      const total = sqlite.prepare('SELECT COUNT(*) c FROM cooked_log WHERE couple_id=?').get(coupleId).c;
+      const primeira = sqlite.prepare('SELECT MIN(criado_em) m FROM cooked_log WHERE couple_id=?').get(coupleId)?.m;
+      const semanas = primeira ? Math.max(1, (Date.now() - new Date(primeira).getTime()) / (7 * 86_400_000)) : 1;
+      return { ultimos7, mediaSemanal: total / semanas };
+    },
+    // Métrica-norte da feature: sessões que terminam em "cozinhamos".
+    taxaDeCozinhada(coupleId) {
+      const total = sqlite.prepare(`SELECT COUNT(*) c FROM spins WHERE couple_id=? AND desfecho!='pendente'`).get(coupleId).c;
+      const cozinhou = sqlite.prepare(`SELECT COUNT(*) c FROM spins WHERE couple_id=? AND desfecho='cozinhou'`).get(coupleId).c;
+      return { total, cozinhou, taxa: total ? cozinhou / total : 0 };
+    },
+
     /* ── Chat: leitura e não lidas (badge da tab bar) ── */
     markMessagesRead(coupleId, email, lastId) {
       const last = Number(lastId) || sqlite.prepare('SELECT MAX(id) m FROM messages WHERE couple_id=?').get(coupleId)?.m || 0;
@@ -1163,9 +1372,12 @@ export function createDb(file) {
         sqlite.prepare('DELETE FROM moment_photos WHERE moment_id IN (SELECT id FROM moments WHERE couple_id=?)').run(coupleId);
         sqlite.prepare('DELETE FROM plan_steps WHERE plan_id IN (SELECT id FROM plans WHERE couple_id=?)').run(coupleId);
         sqlite.prepare('DELETE FROM plan_attachments WHERE plan_id IN (SELECT id FROM plans WHERE couple_id=?)').run(coupleId);
+        sqlite.prepare('DELETE FROM pantry_events WHERE item_id IN (SELECT id FROM pantry_items WHERE couple_id=?)').run(coupleId);
+        sqlite.prepare('DELETE FROM pantry_items WHERE couple_id=?').run(coupleId);
         for (const t of ['events', 'lists', 'moments', 'checkins', 'goals', 'messages', 'plans', 'gifts',
           'saved_date_ideas', 'quiz_answers', 'time_capsules', 'albums', 'intimacy_sessions', 'subscriptions',
-          'message_reads', 'notifications_sent', 'invites', 'couple_members']) {
+          'message_reads', 'notifications_sent', 'events_log', 'spins', 'cooked_log',
+          'photo_sessions', 'invites', 'couple_members']) {
           sqlite.prepare(`DELETE FROM ${t} WHERE couple_id=?`).run(coupleId);
         }
         sqlite.prepare('DELETE FROM couples WHERE id=?').run(coupleId);
@@ -1174,17 +1386,154 @@ export function createDb(file) {
       return true;
     },
 
+    /* ── Assinatura ──────────────────────────────────────────────────────
+       Regra: o direito de uso é *derivado* do estado guardado (teste em
+       andamento, período pago vigente). Nada de entitlement escrito à mão
+       pelo cliente — quem escreve é o webhook do provedor. */
     getSubscription(coupleId) {
       const row = sqlite.prepare('SELECT * FROM subscriptions WHERE couple_id=?').get(coupleId);
-      if (row) return { ...row, entitlements: parseJson(row.entitlements, ['free']) };
-      return { couple_id: coupleId, plan: 'free', entitlements: ['free'] };
+      const now = new Date().toISOString();
+      const base = {
+        couple_id: coupleId,
+        plan: 'free',
+        status: 'free',
+        provider: null,
+        customer_id: null,
+        subscription_id: null,
+        current_period_end: null,
+        trial_ends_at: null,
+        cancel_at_period_end: 0,
+        gift_until: null,
+        ...(row || {}),
+      };
+      const trialing = !!base.trial_ends_at && base.trial_ends_at > now;
+      // Teste vale só pela data dele — status 'trialing' vencido não libera nada.
+      // "canceled" continua valendo até o fim do período já pago.
+      const paid = ['active', 'past_due', 'canceled'].includes(base.status)
+        && (!base.current_period_end || base.current_period_end > now);
+      const gifted = !!base.gift_until && base.gift_until > now;
+      const premium = trialing || paid || gifted;
+      return {
+        ...base,
+        plan: premium ? 'premium' : 'free',
+        trialing,
+        gifted,
+        entitlements: premium ? ['free', 'premium'] : ['free'],
+      };
     },
-    setSubscription(coupleId, plan = 'free') {
-      const entitlements = plan === 'premium' ? ['free', 'premium'] : ['free'];
-      sqlite.prepare(`INSERT INTO subscriptions (couple_id, plan, entitlements, updated_at) VALUES (?, ?, ?, datetime('now'))
-        ON CONFLICT(couple_id) DO UPDATE SET plan=excluded.plan, entitlements=excluded.entitlements, updated_at=datetime('now')`)
-        .run(coupleId, String(plan), JSON.stringify(entitlements));
+    // Escrita vinda do provedor de pagamento (webhook) ou do início do teste.
+    saveSubscription(coupleId, patch = {}) {
+      const cur = sqlite.prepare('SELECT * FROM subscriptions WHERE couple_id=?').get(coupleId) || {};
+      const next = {
+        status: patch.status ?? cur.status ?? 'free',
+        provider: patch.provider ?? cur.provider ?? null,
+        customer_id: patch.customerId ?? cur.customer_id ?? null,
+        subscription_id: patch.subscriptionId ?? cur.subscription_id ?? null,
+        current_period_end: patch.currentPeriodEnd ?? cur.current_period_end ?? null,
+        trial_ends_at: patch.trialEndsAt ?? cur.trial_ends_at ?? null,
+        gift_until: patch.giftUntil ?? cur.gift_until ?? null,
+        cancel_at_period_end: (patch.cancelAtPeriodEnd ?? cur.cancel_at_period_end) ? 1 : 0,
+      };
+      sqlite.prepare(`INSERT INTO subscriptions
+          (couple_id, plan, entitlements, status, provider, customer_id, subscription_id, current_period_end, trial_ends_at, cancel_at_period_end, gift_until, updated_at)
+        VALUES (?, 'free', '["free"]', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(couple_id) DO UPDATE SET
+          status=excluded.status, provider=excluded.provider, customer_id=excluded.customer_id,
+          subscription_id=excluded.subscription_id, current_period_end=excluded.current_period_end,
+          trial_ends_at=excluded.trial_ends_at, cancel_at_period_end=excluded.cancel_at_period_end,
+          gift_until=excluded.gift_until, updated_at=datetime('now')`)
+        .run(coupleId, next.status, next.provider, next.customer_id, next.subscription_id,
+          next.current_period_end, next.trial_ends_at, next.cancel_at_period_end, next.gift_until);
       return this.getSubscription(coupleId);
+    },
+    coupleByCustomerId(customerId) {
+      return sqlite.prepare('SELECT couple_id FROM subscriptions WHERE customer_id=?').get(customerId)?.couple_id || null;
+    },
+    // Teste grátis: uma vez por espaço, sem cartão.
+    startTrial(coupleId, days = 14) {
+      const row = sqlite.prepare('SELECT trial_ends_at, status FROM subscriptions WHERE couple_id=?').get(coupleId);
+      if (row?.trial_ends_at) return { started: false, reason: 'already_used', subscription: this.getSubscription(coupleId) };
+      const ends = new Date(Date.now() + days * 86_400_000).toISOString();
+      this.saveSubscription(coupleId, { status: 'trialing', provider: 'trial', trialEndsAt: ends });
+      return { started: true, subscription: this.getSubscription(coupleId) };
+    },
+
+    /* ── Presente: quem paga não é quem usa ────────────────────────────────
+       O código é criado quando o pagamento confirma (ou pela operação, em
+       parcerias) e resgatado por um Espaço do Casal, que ganha N meses. */
+    createGiftCode({ months = 12, origin = 'compra', buyerEmail = null, buyerName = null, message = '', session = null } = {}) {
+      const m = Math.min(24, Math.max(1, Number(months) || 12));
+      for (let i = 0; i < 5; i++) {
+        const code = generateGiftCode();
+        try {
+          sqlite.prepare(`INSERT INTO gift_codes (code, months, origin, buyer_email, buyer_name, message, provider_session)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`)
+            .run(code, m, String(origin).slice(0, 20), buyerEmail, buyerName ? String(buyerName).slice(0, 80) : null,
+              String(message).slice(0, 300), session);
+          return this.getGiftCode(code);
+        } catch { /* colisão de código, tenta outro */ }
+      }
+      throw new Error('Não conseguimos gerar o código do presente');
+    },
+    getGiftCode(code) {
+      const clean = String(code || '').trim().toUpperCase();
+      return sqlite.prepare('SELECT * FROM gift_codes WHERE code=?').get(clean)
+        || sqlite.prepare('SELECT * FROM gift_codes WHERE REPLACE(code, \'-\', \'\')=?').get(clean.replace(/-/g, ''))
+        || null;
+    },
+    giftBySession(sessionId) {
+      return sqlite.prepare('SELECT * FROM gift_codes WHERE provider_session=?').get(sessionId) || null;
+    },
+    // Soma os meses ao crédito existente (presentes se acumulam) e nunca
+    // encurta o que já estava valendo.
+    redeemGiftCode(code, coupleId, email) {
+      const gift = this.getGiftCode(code);
+      if (!gift) return { ok: false, reason: 'not_found' };
+      if (gift.status !== 'paid') return { ok: false, reason: gift.status === 'redeemed' ? 'already_redeemed' : 'void' };
+
+      const sub = this.getSubscription(coupleId);
+      const now = new Date();
+      const base = sub.gift_until && new Date(sub.gift_until) > now ? new Date(sub.gift_until) : now;
+      const until = new Date(base);
+      until.setMonth(until.getMonth() + gift.months);
+
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare(`UPDATE gift_codes SET status='redeemed', redeemed_by_couple=?, redeemed_by_email=?,
+          redeemed_at=datetime('now') WHERE code=? AND status='paid'`).run(coupleId, email, gift.code);
+        this.saveSubscription(coupleId, { giftUntil: until.toISOString() });
+      });
+      tx();
+      return { ok: true, months: gift.months, until: until.toISOString(), subscription: this.getSubscription(coupleId) };
+    },
+
+    /* ── Uso vs limites do plano grátis ── */
+    usage(coupleId) {
+      const count = (sql) => sqlite.prepare(sql).get(coupleId).c;
+      return {
+        photos: count(`SELECT COUNT(*) c FROM moment_photos p
+          JOIN moments m ON m.id=p.moment_id WHERE m.couple_id=?`),
+        capsules: count('SELECT COUNT(*) c FROM time_capsules WHERE couple_id=?'),
+        albums: count('SELECT COUNT(*) c FROM albums WHERE couple_id=?'),
+      };
+    },
+
+    /* ── Funil (eventos próprios, sem analytics de terceiros) ── */
+    track(name, { coupleId = null, email = null, props = {} } = {}) {
+      sqlite.prepare('INSERT INTO events_log (couple_id, user_email, name, props) VALUES (?, ?, ?, ?)')
+        .run(coupleId, email, String(name).slice(0, 60), JSON.stringify(props).slice(0, 1000));
+    },
+    funnel(days = 30) {
+      const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
+      const byName = sqlite.prepare(`SELECT name, COUNT(*) c, COUNT(DISTINCT couple_id) casais
+        FROM events_log WHERE created_at >= ? GROUP BY name ORDER BY c DESC`).all(since);
+      const espacos = sqlite.prepare('SELECT COUNT(*) c FROM couples').get().c;
+      const conectados = sqlite.prepare(`SELECT COUNT(*) c FROM (
+        SELECT couple_id FROM couple_members GROUP BY couple_id HAVING COUNT(*) > 1)`).get().c;
+      const assinantes = sqlite.prepare(`SELECT COUNT(*) c FROM subscriptions
+        WHERE status IN ('active','past_due') AND (current_period_end IS NULL OR current_period_end > datetime('now'))`).get().c;
+      const emTeste = sqlite.prepare(`SELECT COUNT(*) c FROM subscriptions
+        WHERE trial_ends_at > datetime('now') AND status='trialing'`).get().c;
+      return { dias: days, espacos, conectados, emTeste, assinantes, eventos: byName };
     },
   };
 }

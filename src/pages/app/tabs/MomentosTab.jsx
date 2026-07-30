@@ -116,6 +116,10 @@ function MomentSheet({ moment, onClose, onSaved }) {
         await apiUpload('/api/moments', fd);
       }
       onSaved();
+    } catch (err) {
+      // Limite de fotos do plano grátis: o paywall global já abriu.
+      if (!err.upgrade) throw err;
+      onClose();
     } finally { setSaving(false); }
   }
 

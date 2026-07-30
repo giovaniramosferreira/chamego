@@ -92,6 +92,10 @@ function CapsulaSheet({ onClose, onSaved }) {
       if (file) fd.append('media', file);
       await apiUpload('/api/time-capsules', fd);
       onSaved();
+    } catch (err) {
+      // Limite do plano: o paywall global já apareceu, aqui é só não estourar.
+      if (!err.upgrade) throw err;
+      onClose();
     } finally { setSaving(false); }
   }
   const TYPES = [['message', 'Mensagem', 'edit'], ['photo', 'Foto', 'image'], ['audio', 'Áudio', 'mic']];

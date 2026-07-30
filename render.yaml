@@ -35,3 +35,23 @@ services:
         sync: false
       - key: GMAIL_APP_PASSWORD
         sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_MENSAL
+        sync: false
+      - key: STRIPE_PRICE_ANUAL
+        sync: false
+      - key: STRIPE_PRICE_PRESENTE_3M
+        sync: false
+      - key: STRIPE_PRICE_PRESENTE_6M
+        sync: false
+      - key: STRIPE_PRICE_PRESENTE_12M
+        sync: false
+      - key: STRIPE_PIX
+        sync: false
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: ANTHROPIC_API_KEY
+        sync: false

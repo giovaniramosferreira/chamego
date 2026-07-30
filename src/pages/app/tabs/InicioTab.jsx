@@ -9,6 +9,7 @@ import Icon from '../../../ui/icons.jsx';
 import InstallPrompt from '../../../components/InstallPrompt.jsx';
 import DiscoveryCard from '../../../components/DiscoveryCard.jsx';
 import InviteActions from '../../../components/InviteActions.jsx';
+import ShareCounter from '../../../components/ShareCounter.jsx';
 
 const MOODS = { ótimo: '😀', bem: '🙂', neutro: '😐', 'pra baixo': '😔', cansado: '😴', apaixonado: '🥰' };
 
@@ -139,6 +140,7 @@ export default function InicioTab() {
           <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mb-1">{couple.milestone_label || 'Juntos há'}</p>
           <p className="font-display text-[2.4rem] text-accent leading-none my-1">{daysTogether(couple.milestone_date)} <span className="font-sans text-lg text-ink-2">dias</span></p>
           <p className="text-sm text-ink-2">desde {formatDate(couple.milestone_date)}</p>
+          <ShareCounter couple={couple} />
         </Card>
       ) : (
         <Card className="!p-0">

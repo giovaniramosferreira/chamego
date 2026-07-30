@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
-import { useSubscription } from '../../../lib/subscription.js';
+import { useSubscription, track } from '../../../lib/subscription.js';
 import { AppHeader, Card, Btn, Chip, Spinner, EmptyState, PaywallSheet } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
@@ -71,7 +71,7 @@ export default function DateIdeasTab() {
           )}
 
           {premiumPacks.length > 0 && !sub.has('premium') && (
-            <button onClick={() => setPaywall(true)} className="w-full flex items-center gap-3 rounded-card bg-surface p-4 shadow-[inset_0_0_0_1px_var(--line-2)]">
+            <button onClick={() => { track('paywall_visto', 'date-ideas'); setPaywall(true); }} className="w-full flex items-center gap-3 rounded-card bg-surface p-4 shadow-[inset_0_0_0_1px_var(--line-2)]">
               <span className="flex-none w-10 h-10 rounded-full bg-accent-soft grid place-items-center text-accent-press"><Icon name="lock" size={18} /></span>
               <span className="flex-1 text-left"><span className="block font-medium">Packs de experiências</span><span className="block text-sm text-ink-2">Roteiros completos · Premium</span></span>
             </button>
@@ -79,7 +79,7 @@ export default function DateIdeasTab() {
         </>
       )}
 
-      {paywall && <PaywallSheet title="Packs de experiências" perks={['Roteiros passo a passo', 'Packs sazonais e temáticos', 'Novas ideias toda semana']} onClose={() => setPaywall(false)} onActivate={async () => { await sub.activatePremium(); load(); }} />}
+      {paywall && <PaywallSheet title="Packs de experiências" perks={['Roteiros passo a passo', 'Packs sazonais e temáticos', 'Novas ideias toda semana']} origem="date-ideas" onClose={() => setPaywall(false)} />}
     </div>
   );
 }

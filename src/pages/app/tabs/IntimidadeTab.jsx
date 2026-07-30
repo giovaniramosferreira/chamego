@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
-import { useSubscription } from '../../../lib/subscription.js';
+import { useSubscription, track } from '../../../lib/subscription.js';
 import { AppHeader, Card, Sheet, Btn, Spinner, EmptyState, PaywallSheet } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
@@ -32,7 +32,7 @@ export default function IntimidadeTab() {
   if (data.hasPin && !unlocked) return <PinLock onBack={() => nav('/app/voces')} onOk={() => setUnlocked(true)} />;
 
   function pick(p) {
-    if (p.premium && !sub.has('premium')) { setPaywall(true); return; }
+    if (p.premium && !sub.has('premium')) { track('paywall_visto', 'intimidade'); setPaywall(true); return; }
     setCarta(p);
   }
 
@@ -69,7 +69,7 @@ export default function IntimidadeTab() {
       {carta && <CartaSheet prompt={carta} onClose={() => setCarta(null)} />}
       {historico && <HistoricoSheet onClose={() => setHistorico(false)} />}
       {pinSheet && <PinSheet hasPin={data.hasPin} onClose={() => setPinSheet(false)} onSaved={() => { setPinSheet(false); load(); }} />}
-      {paywall && <PaywallSheet title="Trilhas de conexão" perks={['Trilhas por tema', 'Rituais guiados', 'Novos conteúdos por pack']} onClose={() => setPaywall(false)} onActivate={sub.activatePremium} />}
+      {paywall && <PaywallSheet title="Trilhas de conexão" perks={['Trilhas por tema', 'Rituais guiados', 'Novos conteúdos por pack']} origem="intimidade" onClose={() => setPaywall(false)} />}
     </div>
   );
 }
