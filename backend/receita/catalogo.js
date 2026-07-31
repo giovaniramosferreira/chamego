@@ -1,7 +1,14 @@
 // Catálogo curado. Regras que valem para toda receita aqui:
-//   ≤ 8 ingredientes, ≤ 40 min, ingrediente de mercado brasileiro comum,
-//   medida em xícara/colher/"a gosto", passo curto (um por tela no modo cozinha).
-// O alvo não é o cozinheiro de domingo: é o casal na quarta às 20h com fome.
+//   ≤ 8 ingredientes, ingrediente de mercado brasileiro comum, medida em
+//   xícara/colher/"a gosto", passo curto (um por tela no modo cozinha).
+// O alvo principal é o casal na quarta às 20h com fome — por isso a maioria
+// fica em 30 min.
+//
+// Mas existe o prato de sábado: lasanha e parmegiana levam mais de uma hora e
+// mentir no tempo pra caber numa regra seria pior do que não ter a receita —
+// o casal descobre a mentira com fome, na cozinha. Quem separa os dois mundos
+// é a roda: acima de 45 min a receita já perde peso em dia de semana, e
+// dificuldade 2 ganha peso no fim de semana. A regra virou tag, não corte.
 //
 // `contem` alimenta as restrições (filtro duro na roda) e o alerta de alérgeno.
 // `tags` alimenta a ponderação por hora/dia/clima.
@@ -258,6 +265,129 @@ export const RECEITAS = [
       { texto: 'Monte em camadas na travessa, temperando entre elas.' },
       { texto: 'Cubra com papel-alumínio e asse.', timerSeg: 1200 },
       { texto: 'Tire o papel, ponha o queijo e volte ao forno até gratinar.', timerSeg: 600 },
+    ],
+  },
+  {
+    id: 'lasanha-de-domingo',
+    titulo: 'Lasanha de domingo',
+    tempoMin: 70, dificuldade: 2, custo: 45, porcoes: 4,
+    tags: ['jantar', 'almoco', 'forno', 'comfort'],
+    contem: ['gluten', 'lactose', 'carne'],
+    ingredientes: [i('massa de lasanha', '1 pacote'), i('carne moída', '500 g'), i('molho de tomate', '2 xícaras'),
+      i('presunto', '200 g'), i('mussarela', '300 g'), i('cebola', '1 unidade'), i('alho', '3 dentes'),
+      i('creme de leite', '1 lata', true)],
+    passos: [
+      { texto: 'Refogue a cebola e o alho, junte a carne moída e deixe dourar de verdade.', timerSeg: 480 },
+      { texto: 'Molho de tomate na carne, fogo baixo, apurando até encorpar.', timerSeg: 600 },
+      { texto: 'Molho no fundo da travessa antes de tudo — é o que impede a massa de grudar.' },
+      { texto: 'Camadas: massa, carne, presunto, queijo. Repita até acabar.' },
+      { texto: 'Termine com molho e uma camada boa de queijo: a de cima é a que aparece.' },
+      { texto: 'Forno a 200°C coberto com papel-alumínio.', timerSeg: 1800 },
+      { texto: 'Tire o papel e deixe gratinar até dourar.', timerSeg: 600 },
+      { texto: 'Espere 10 minutos antes de cortar. Quente demais, ela desmonta no prato.', timerSeg: 600 },
+    ],
+  },
+  {
+    id: 'ramen-coreano',
+    titulo: 'Ramen coreano turbinado',
+    tempoMin: 15, dificuldade: 1, custo: 16, porcoes: 2,
+    tags: ['jantar', 'rapido', 'madrugada', 'comfort'],
+    contem: ['gluten', 'ovo'],
+    ingredientes: [i('macarrão instantâneo coreano', '2 pacotes'), i('ovo', '2 unidades'),
+      i('cebolinha', 'a gosto', true), i('queijo', '1 fatia', true), i('kimchi', 'a gosto', true),
+      i('shoyu', '1 colher de sopa', true)],
+    passos: [
+      { texto: 'Água fervendo. Use um pouco menos do que o pacote manda — caldo concentrado é o ponto.' },
+      { texto: 'Macarrão e o tempero do pacote juntos.', timerSeg: 300 },
+      { texto: 'Quebre os ovos por cima sem mexer e tampe: eles cozinham no vapor.', timerSeg: 120 },
+      { texto: 'Fogo desligado, a fatia de queijo por cima — derrete e tira o excesso de ardência.' },
+      { texto: 'Cebolinha e kimchi na tigela, no fim. Kimchi cozido perde a graça.' },
+    ],
+  },
+  {
+    id: 'pasta-limone-salmao',
+    titulo: 'Pasta al limone com salmão',
+    tempoMin: 25, dificuldade: 2, custo: 55, porcoes: 2,
+    tags: ['jantar', 'leve'],
+    contem: ['gluten', 'lactose', 'peixe'],
+    ingredientes: [i('macarrão', '250 g'), i('salmão', '300 g'), i('creme de leite', '1 caixa'),
+      i('limão', '1 unidade'), i('alho', '2 dentes'), i('queijo parmesão', '½ xícara'), i('sal', 'a gosto')],
+    passos: [
+      { texto: 'Macarrão na água fervente com bastante sal. Guarde uma xícara da água antes de escorrer.', timerSeg: 600 },
+      { texto: 'Salmão em cubos, sal, e sele na frigideira quente sem mexer muito.', timerSeg: 300 },
+      { texto: 'Tire o salmão. No mesmo azeite, alho em fogo baixo só até perfumar.', timerSeg: 120 },
+      { texto: 'Creme de leite, raspas e suco do limão (siciliano se tiver) e o parmesão, fora do fogo forte.' },
+      { texto: 'Junte o macarrão e um pouco da água reservada até virar molho de verdade.' },
+      { texto: 'Salmão de volta por último, só pra aquecer. Mexer demais desmancha.' },
+    ],
+  },
+  {
+    id: 'hamburguer-caseiro',
+    titulo: 'Hambúrguer caseiro',
+    tempoMin: 25, dificuldade: 1, custo: 32, porcoes: 2,
+    tags: ['jantar', 'comfort'],
+    contem: ['gluten', 'lactose', 'carne'],
+    ingredientes: [i('carne moída', '400 g'), i('pão de hambúrguer', '2 unidades'), i('queijo', '2 fatias'),
+      i('cebola', '1 unidade'), i('alface', 'a gosto', true), i('tomate', '1 unidade', true), i('sal', 'a gosto')],
+    passos: [
+      { texto: 'Divida a carne em duas bolas e achate com a mão. Não sove: carne sovada vira almôndega.' },
+      { texto: 'Sal só do lado de fora, e só na hora de ir pra frigideira.' },
+      { texto: 'Frigideira bem quente. Coloque e não mexa até formar crosta escura.', timerSeg: 180 },
+      { texto: 'Vire uma vez só. Nada de apertar com a espátula — ali vai embora o suco.', timerSeg: 120 },
+      { texto: 'Queijo em cima, tampe por meio minuto e desligue.', timerSeg: 30 },
+      { texto: 'Toste os pães na mesma frigideira, na gordura que sobrou. Monte e coma em pé mesmo.' },
+    ],
+  },
+  {
+    id: 'hot-dog-caseiro',
+    titulo: 'Hot dog de sexta',
+    tempoMin: 20, dificuldade: 1, custo: 18, porcoes: 2,
+    tags: ['jantar', 'madrugada', 'rapido', 'barato', 'comfort'],
+    contem: ['gluten', 'carne'],
+    ingredientes: [i('salsicha', '4 unidades'), i('pão de hot dog', '4 unidades'), i('molho de tomate', '1 xícara'),
+      i('cebola', '½ unidade'), i('batata palha', 'a gosto', true), i('milho', 'a gosto', true)],
+    passos: [
+      { texto: 'Refogue a cebola picada, junte o molho de tomate e deixe apurar.', timerSeg: 300 },
+      { texto: 'Salsichas inteiras no molho, fogo baixo, tampado — elas pegam gosto ali.', timerSeg: 420 },
+      { texto: 'Quer o clássico? Desfie as salsichas dentro do molho com dois garfos.' },
+      { texto: 'Aqueça os pães (forno, frigideira ou 15 s no micro-ondas dentro de um pano).' },
+      { texto: 'Monte, cubra com molho e só então batata palha — ela precisa continuar crocante.' },
+    ],
+  },
+  {
+    id: 'parmegiana-de-forno',
+    titulo: 'Parmegiana de sábado',
+    tempoMin: 50, dificuldade: 2, custo: 42, porcoes: 3,
+    tags: ['almoco', 'jantar', 'forno', 'comfort'],
+    contem: ['gluten', 'ovo', 'lactose', 'carne'],
+    ingredientes: [i('bife', '4 unidades'), i('farinha de rosca', '2 xícaras'), i('ovo', '2 unidades'),
+      i('farinha de trigo', '1 xícara'), i('molho de tomate', '2 xícaras'), i('mussarela', '250 g'),
+      i('sal', 'a gosto')],
+    passos: [
+      { texto: 'Bata os bifes com o fundo de uma panela até ficarem finos. Tempere com sal.' },
+      { texto: 'Três pratos na ordem: farinha de trigo, ovo batido, farinha de rosca.' },
+      { texto: 'Passe cada bife nos três, apertando bem na farinha de rosca.' },
+      { texto: 'Frite em óleo quente até dourar dos dois lados. Escorra no papel.', timerSeg: 480 },
+      { texto: 'Na travessa: molho no fundo, bifes por cima, mais molho, depois o queijo.' },
+      { texto: 'Forno a 200°C só até o queijo derreter e borbulhar.', timerSeg: 900 },
+    ],
+  },
+  {
+    id: 'arroz-feijao-carne-vagem',
+    titulo: 'Arroz, feijão e carne com vagem',
+    tempoMin: 35, dificuldade: 1, custo: 26, porcoes: 3,
+    tags: ['almoco', 'jantar', 'comfort'],
+    contem: ['carne'],
+    ingredientes: [i('arroz', '1 xícara (cru)'), i('feijão', '2 xícaras (cozido)'), i('carne moída', '400 g'),
+      i('vagem', '200 g'), i('cebola', '1 unidade'), i('alho', '3 dentes'), i('tomate', '1 unidade', true),
+      i('sal', 'a gosto')],
+    passos: [
+      { texto: 'Arroz primeiro: refogue metade do alho, junte o arroz e 2 xícaras de água quente.', timerSeg: 900 },
+      { texto: 'Vagem em pedaços de dois dedos, na água fervente. Verde e firme, não murcha.', timerSeg: 240 },
+      { texto: 'Na outra panela, cebola e o resto do alho até dourar.', timerSeg: 180 },
+      { texto: 'Carne moída em fogo alto, espalhada, até soltar a água e começar a fritar.', timerSeg: 480 },
+      { texto: 'Tomate picado, sal, e a vagem escorrida por último — ela só se junta, não cozinha de novo.' },
+      { texto: 'Feijão esquentando ao lado. Sirva tudo junto, do jeito que é em casa.' },
     ],
   },
 ];

@@ -3,6 +3,7 @@ import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Icon from '../../ui/icons.jsx';
 import { Badge } from '../../ui/kit.jsx';
 import { api } from '../../lib/api.js';
+import { registrarAberturaPwa } from '../../lib/pwa.js';
 import QuickAdd from '../../components/QuickAdd.jsx';
 import ConnectionBanner from '../../components/ConnectionBanner.jsx';
 import UpgradeGate from '../../components/UpgradeGate.jsx';
@@ -18,6 +19,7 @@ import PlanoTab from './tabs/PlanoTab.jsx';
 import CozinhaTab from './tabs/CozinhaTab.jsx';
 import ReceitaDetail from './tabs/ReceitaDetail.jsx';
 import DespensaTab from './tabs/DespensaTab.jsx';
+import AchadosTab from './tabs/AchadosTab.jsx';
 import ChatScreen from './tabs/ChatScreen.jsx';
 import PlanosTab, { PlanoDetail } from './tabs/PlanosTab.jsx';
 import PresentesTab, { PresenteDetail } from './tabs/PresentesTab.jsx';
@@ -55,6 +57,9 @@ export default function AppShell() {
   const isTab = TABS.some((t) => t.path === location.pathname);
   const [adding, setAdding] = useState(false);
   const [badges, setBadges] = useState({ unread: 0 });
+
+  // Quem entrou pelo ícone da tela de início conta uma vez por dia.
+  useEffect(() => { registrarAberturaPwa(); }, []);
 
   const loadBadges = useCallback(() => {
     api('/api/badges').then(setBadges).catch(() => {});
@@ -94,6 +99,7 @@ export default function AppShell() {
             <Route path="cozinha" element={<CozinhaTab />} />
             <Route path="cozinha/:id" element={<ReceitaDetail />} />
             <Route path="despensa" element={<DespensaTab />} />
+            <Route path="achados" element={<AchadosTab />} />
             <Route path="planos" element={<PlanosTab />} />
             <Route path="planos/:id" element={<PlanoDetail />} />
             <Route path="presentes" element={<PresentesTab />} />

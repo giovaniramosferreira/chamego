@@ -8,7 +8,11 @@
     <!-- App instalável: tela de início do celular, sem loja -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- As duas linhas fazem a mesma coisa: a da Apple é a que o Safari lê, a
+         outra é o padrão que a substituiu. Sem a segunda, o Chrome imprime
+         aviso de recurso obsoleto no console. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Chamego" />
     <title>Chamego — a vida a dois, organizada com carinho</title>

@@ -9,6 +9,13 @@ import Roleta from '../../../components/Roleta.jsx';
 // "O que a gente come hoje?" em menos de 10 segundos, por duas portas: sorteio
 // e foto do que tem em casa. A resposta é UMA receita — a lista é justamente o
 // problema que a feature mata.
+function legendaAchados(a) {
+  if (!a) return 'Cole o link de uma receita';
+  if (a.pendentes) return `${a.pendentes} esperando vocês decidirem`;
+  if (a.salvas) return `${a.salvas} ${a.salvas === 1 ? 'receita de vocês' : 'receitas de vocês'} na roda`;
+  return 'Cole o link de uma receita';
+}
+
 export default function CozinhaTab() {
   const nav = useNavigate();
   const { toast } = useToast();
@@ -124,6 +131,10 @@ export default function CozinhaTab() {
         <Row icon="list" title="Despensa de vocês"
           sub={`${estado.despensa} ${estado.despensa === 1 ? 'item' : 'itens'} — melhora o sorteio`}
           onClick={() => nav('/app/despensa')} />
+        {/* Link de receita vira rascunho aqui. O subtítulo conta o estado real:
+            rascunho esperando decisão é a única coisa que pede a pessoa de volta. */}
+        <Row icon="link" title="Receitinhas achadas" sub={legendaAchados(estado.achados)}
+          onClick={() => nav('/app/achados')} />
       </RowList>
 
       {estado.metrica?.total > 2 && (

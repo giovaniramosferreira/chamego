@@ -15,6 +15,7 @@ import { girar, girosRestantes, GIROS_GRATIS_DIA } from './receita/roleta.js';
 import { compararDespensa, normalizar, rotuloFalta } from './receita/ingredientes.js';
 import { cadenciaAposFeedback, listaDoDia, melhorMomentoDeAvisar } from './receita/lista.js';
 import { extrairIngredientes, visaoDisponivel } from './receita/visao.js';
+import { extrairDoLink, iaDisponivel } from './receita/achados.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -665,6 +666,23 @@ function comCobertura(receita, despensa) {
   return { ...receita, cobertura: c.cobertura, temTudo: c.temTudo, falta: c.faltaEssencial, rotuloFalta: rotuloFalta(c) };
 }
 
+// O catálogo da casa mais as receitas que o casal aprovou. Toda a cozinha passa
+// por aqui: se uma receita de vocês não entrasse nesta lista, ela seria salva e
+// nunca mais apareceria — que é o destino de toda lista de "salvos".
+function receitasDe(coupleId) {
+  return [...RECEITAS, ...db.receitasDoCasal(coupleId)];
+}
+
+function acharReceita(coupleId, id) {
+  return RECEITAS_POR_ID[id] || db.receitasDoCasal(coupleId).find((r) => r.id === String(id)) || null;
+}
+
+function convitePendente(coupleId, spin, despensa) {
+  if (!spin) return null;
+  const receita = acharReceita(coupleId, spin.receita_id);
+  return receita ? { spinId: spin.id, receita: comCobertura(receita, despensa) } : null;
+}
+
 app.get('/api/cozinha', withCouple, (req, res) => {
   const premium = isPremium(req.couple.id);
   const despensa = db.listPantry(req.couple.id);
@@ -678,7 +696,14 @@ app.get('/api/cozinha', withCouple, (req, res) => {
     limiteDespensa: premium ? -1 : DESPENSA_GRATIS,
     premium,
     // Sugestão que o par sorteou e ainda está de pé: convite, não notificação.
-    parSugeriu: parSugeriu ? { spinId: parSugeriu.id, receita: comCobertura(RECEITAS_POR_ID[parSugeriu.receita_id], despensa) } : null,
+    // A receita pode ter sido descartada da lista de achados desde o giro — aí
+    // o convite simplesmente não existe mais.
+    parSugeriu: convitePendente(req.couple.id, parSugeriu, despensa),
+    achados: {
+      pendentes: db.listFinds(req.couple.id, 'pendente').length,
+      salvas: db.listFinds(req.couple.id, 'salva').length,
+      iaDisponivel: iaDisponivel(),
+    },
     metrica: db.taxaDeCozinhada(req.couple.id),
   });
 });
@@ -697,7 +722,7 @@ app.post('/api/cozinha/girar', withCouple, (req, res) => {
 
   const despensa = db.listPantry(req.couple.id);
   const recusadas = Array.isArray(req.body?.recusadas) ? req.body.recusadas.slice(0, 20) : [];
-  const resultado = girar(RECEITAS, {
+  const resultado = girar(receitasDe(req.couple.id), {
     agora: new Date(),
     tempC: typeof req.body?.tempC === 'number' ? req.body.tempC : undefined,
     despensa,
@@ -731,14 +756,14 @@ app.post('/api/cozinha/spins/:id/desfecho', withCouple, (req, res) => {
 });
 
 app.get('/api/cozinha/receitas/:id', withCouple, (req, res) => {
-  const receita = RECEITAS_POR_ID[req.params.id];
+  const receita = acharReceita(req.couple.id, req.params.id);
   if (!receita) return res.status(404).json({ error: 'Receita não encontrada' });
   res.json({ receita: comCobertura(receita, db.listPantry(req.couple.id)) });
 });
 
 // "Cozinhamos isso": fecha o giro, registra e devolve o gancho pro Momento.
 app.post('/api/cozinha/cozinhei', withCouple, (req, res) => {
-  const receita = RECEITAS_POR_ID[String(req.body?.receitaId || '')];
+  const receita = acharReceita(req.couple.id, String(req.body?.receitaId || ''));
   if (!receita) return res.status(404).json({ error: 'Receita não encontrada' });
   if (req.body?.spinId) db.setSpinOutcome(req.couple.id, Number(req.body.spinId), 'cozinhou');
   const registro = db.registrarCozinhada(req.couple.id, req.user.email, {
@@ -750,6 +775,76 @@ app.post('/api/cozinha/cozinhei', withCouple, (req, res) => {
     metrica: db.taxaDeCozinhada(req.couple.id),
     sugestaoMomento: `Fizemos ${receita.titulo} hoje 🍳`,
   });
+});
+
+/* Receitinhas achadas: link → rascunho → curadoria → roda */
+
+app.get('/api/cozinha/achados', withCouple, (req, res) => {
+  const achados = db.listFinds(req.couple.id);
+  res.json({
+    pendentes: achados.filter((a) => a.status === 'pendente').map(paraTela),
+    salvas: achados.filter((a) => a.status === 'salva').map(paraTela),
+    iaDisponivel: iaDisponivel(),
+    premium: isPremium(req.couple.id),
+  });
+});
+
+// A lista mostra o suficiente pra decidir sem abrir: título, tempo e o que tem
+// dentro. Os passos ficam pra tela da receita.
+function paraTela(achado) {
+  return {
+    id: achado.id,
+    url: achado.url,
+    status: achado.status,
+    criadoEm: achado.criado_em,
+    receita: {
+      id: achado.receita.id,
+      titulo: achado.receita.titulo,
+      tempoMin: achado.receita.tempoMin,
+      porcoes: achado.receita.porcoes,
+      ingredientes: achado.receita.ingredientes,
+      passos: achado.receita.passos.length,
+    },
+  };
+}
+
+app.post('/api/cozinha/achados', withCouple, async (req, res) => {
+  if (!isPremium(req.couple.id)) {
+    db.track('limite_atingido', { coupleId: req.couple.id, email: req.user.email, props: { limite: 'achados' } });
+    return res.status(402).json({
+      error: 'Ler link de receita é do Chamego Juntos. A IA lê a página e deixa o rascunho pra vocês aprovarem.',
+      upgrade: true, limite: 'achados',
+    });
+  }
+  if (!iaDisponivel()) return res.status(503).json({ error: 'A leitura de link está fora do ar. Tenta mais tarde.' });
+
+  const resultado = await extrairDoLink(req.body?.url);
+  if (!resultado.ok) return res.status(422).json({ error: resultado.erro });
+
+  const { find, repetido } = db.createFind(req.couple.id, req.user.email, {
+    url: resultado.urlFinal, receita: resultado.receita,
+  });
+  db.track('achado_lido', { coupleId: req.couple.id, email: req.user.email, props: { repetido } });
+  res.json({ achado: paraTela(find), repetido });
+});
+
+// Curadoria: o que entra na roda de vocês e o que não entra.
+app.patch('/api/cozinha/achados/:id', withCouple, (req, res) => {
+  const status = String(req.body?.status || '');
+  if (!['salva', 'descartada', 'pendente'].includes(status)) {
+    return res.status(400).json({ error: 'Status inválido' });
+  }
+  const achado = db.setFindStatus(req.couple.id, Number(req.params.id), status);
+  if (!achado) return res.status(404).json({ error: 'Receita não encontrada' });
+  if (status === 'salva') db.track('achado_salvo', { coupleId: req.couple.id, email: req.user.email });
+  res.json({ achado: paraTela(achado) });
+});
+
+app.delete('/api/cozinha/achados/:id', withCouple, (req, res) => {
+  if (!db.deleteFind(req.couple.id, Number(req.params.id))) {
+    return res.status(404).json({ error: 'Receita não encontrada' });
+  }
+  res.json({ ok: true });
 });
 
 /* Despensa */
@@ -860,13 +955,13 @@ app.post('/api/cozinha/foto/:id/confirmar', withCouple, (req, res) => {
     ignorados: confirmados.length - cabe.length,
     // Três ângulos diferentes, como manda a spec: a mais rápida, a que
     // aproveita mais do que tem, e uma que ninguém pensaria.
-    opcoes: tresAngulos(despensa),
+    opcoes: tresAngulos(despensa, receitasDe(req.couple.id)),
   });
 });
 
 // Três receitas com ângulos distintos — nunca três variações da mesma ideia.
-function tresAngulos(despensa) {
-  const comDados = RECEITAS.map((r) => comCobertura(r, despensa)).filter((r) => r.cobertura > 0.3);
+function tresAngulos(despensa, receitas) {
+  const comDados = receitas.map((r) => comCobertura(r, despensa)).filter((r) => r.cobertura > 0.3);
   const porTempo = [...comDados].sort((a, b) => a.tempoMin - b.tempoMin);
   const porCobertura = [...comDados].sort((a, b) => b.cobertura - a.cobertura || a.tempoMin - b.tempoMin);
   const rapida = porTempo[0];
@@ -1057,8 +1152,27 @@ app.post('/api/track', requireAuth, (req, res) => {
 // SPA em produção
 const distDir = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir));
-  app.get(/^\/(?!api).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')));
+  app.use(express.static(distDir, {
+    setHeaders(res, caminho) {
+      const arquivo = path.basename(caminho);
+      // O service worker precisa ser buscado da rede a cada visita. Guardado
+      // por engano, um deploy demora até um dia pra chegar em quem já
+      // instalou o app — e é ele quem controla o cache de todo o resto.
+      if (arquivo === 'sw.js' || arquivo === 'manifest.webmanifest' || arquivo === 'index.html') {
+        res.setHeader('Cache-Control', 'no-cache');
+        return;
+      }
+      // Arquivo de /assets leva hash no nome: muda o conteúdo, muda o nome.
+      // Pode ser guardado pra sempre sem risco de servir versão velha.
+      if (caminho.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
+  app.get(/^\/(?!api).*/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
 }
 
 if (process.env.NODE_ENV !== 'test') {
