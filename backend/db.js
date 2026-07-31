@@ -70,6 +70,21 @@ const SCHEMA = [
     shared INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now'))
   )`,
+  // O que já aconteceu com uma ocorrência. A ocorrência em si não existe como
+  // linha — ela é calculada a partir da regra do evento. Só o fato guardado
+  // aqui é verdade: "esta parcela foi paga, neste dia, por esta pessoa, com
+  // este valor". Guardar as 120 parcelas de dez anos seria lixo que ninguém
+  // apaga e que quebra no dia em que a regra mudar.
+  `CREATE TABLE IF NOT EXISTS event_occurrences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    event_id INTEGER NOT NULL REFERENCES events(id),
+    date TEXT NOT NULL,
+    done_at TEXT,
+    done_by TEXT,
+    amount INTEGER,
+    UNIQUE (event_id, date)
+  )`,
   `CREATE TABLE IF NOT EXISTS lists (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     couple_id INTEGER NOT NULL REFERENCES couples(id),
@@ -398,6 +413,36 @@ const INTIMACY_PROMPTS = [
   { id: 'combinados', tone: 'Combinados', text: 'Um combinado nosso que eu queria rever com carinho é...', premium: true },
 ];
 
+// Um evento aceita muito mais campo desde que a agenda passou a dar conta de
+// conta, tarefa de casa e consulta. Normalizar num lugar só evita que criar e
+// editar divirjam — foi assim que o `updateEvent` antigo esquecia metade.
+const TIPOS_DE_EVENTO = ['evento', 'conta', 'casa', 'feira', 'saude', 'aniversario', 'meta'];
+const FREQ_VALIDAS = ['', 'daily', 'weekly', 'biweekly', 'monthly', 'yearly'];
+
+function camposDeEvento(d = {}) {
+  const inteiroPositivo = (v) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  return {
+    title: String(d.title ?? '').slice(0, 120),
+    notes: String(d.notes ?? '').slice(0, 500),
+    date: String(d.date ?? '').slice(0, 10),
+    time: String(d.time ?? '').slice(0, 5),
+    location: String(d.location ?? '').slice(0, 120),
+    shared: d.shared === false || d.shared === 0 ? 0 : 1,
+    kind: TIPOS_DE_EVENTO.includes(d.kind) ? d.kind : 'evento',
+    recurrence: FREQ_VALIDAS.includes(d.recurrence) ? d.recurrence : '',
+    until: /^\d{4}-\d{2}-\d{2}$/.test(String(d.until ?? '')) ? String(d.until) : '',
+    installments: inteiroPositivo(d.installments),
+    // Valor chega em centavos e sai em centavos. A interface é que põe a vírgula.
+    amount: d.amount === null || d.amount === '' || d.amount === undefined ? null : inteiroPositivo(d.amount),
+    payee: String(d.payee ?? '').slice(0, 60),
+    estimated: d.estimated ? 1 : 0,
+    assignee: String(d.assignee ?? '').slice(0, 120),
+  };
+}
+
 function parseJson(value, fallback) {
   try { return JSON.parse(value || ''); } catch { return fallback; }
 }
@@ -468,6 +513,19 @@ export function createDb(file) {
     // Meses de presente vivem em coluna própria: assim o webhook do Stripe
     // pode reescrever o período pago sem apagar o que foi presenteado.
     'ALTER TABLE subscriptions ADD COLUMN gift_until TEXT',
+    // A agenda deixou de ser só "data com título". Conta de luz, faxina de
+    // terça, aniversário da sogra e consulta são o mesmo objeto com máscaras
+    // diferentes — o tipo é que muda a pergunta que a tela faz.
+    "ALTER TABLE events ADD COLUMN kind TEXT DEFAULT 'evento'",
+    "ALTER TABLE events ADD COLUMN recurrence TEXT DEFAULT ''",
+    "ALTER TABLE events ADD COLUMN until TEXT DEFAULT ''",
+    'ALTER TABLE events ADD COLUMN installments INTEGER',
+    // Dinheiro em centavos, inteiro: 0,1 + 0,2 em ponto flutuante não dá 0,3,
+    // e conta de casal não pode ter centavo fantasma.
+    'ALTER TABLE events ADD COLUMN amount INTEGER',
+    "ALTER TABLE events ADD COLUMN payee TEXT DEFAULT ''",
+    'ALTER TABLE events ADD COLUMN estimated INTEGER DEFAULT 0',
+    "ALTER TABLE events ADD COLUMN assignee TEXT DEFAULT ''",
   ];
   for (const ddl of MIGRATIONS) {
     try { sqlite.prepare(ddl).run(); } catch { /* coluna já existe */ }
@@ -573,24 +631,51 @@ export function createDb(file) {
     listEvents(coupleId) {
       return sqlite.prepare(`SELECT * FROM events WHERE couple_id=? ORDER BY date, CASE WHEN time='' THEN 1 ELSE 0 END, time`).all(coupleId);
     },
-    createEvent(coupleId, email, { title, notes = '', date, time = '', location = '', shared = true }) {
-      const r = sqlite.prepare(`INSERT INTO events (couple_id, created_by, title, notes, date, time, location, shared)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(coupleId, email, String(title).slice(0, 120), String(notes).slice(0, 500), date, time, String(location).slice(0, 120), shared ? 1 : 0);
+    createEvent(coupleId, email, dados) {
+      const c = camposDeEvento(dados);
+      const r = sqlite.prepare(`INSERT INTO events
+        (couple_id, created_by, title, notes, date, time, location, shared,
+         kind, recurrence, until, installments, amount, payee, estimated, assignee)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(coupleId, email, c.title, c.notes, c.date, c.time, c.location, c.shared,
+          c.kind, c.recurrence, c.until, c.installments, c.amount, c.payee, c.estimated, c.assignee);
       return sqlite.prepare('SELECT * FROM events WHERE id=?').get(r.lastInsertRowid);
     },
     updateEvent(coupleId, id, patch) {
       const ev = sqlite.prepare('SELECT * FROM events WHERE id=? AND couple_id=?').get(id, coupleId);
       if (!ev) return null;
-      const fields = { title: 120, notes: 500, date: 10, time: 5, location: 120 };
-      for (const [k, max] of Object.entries(fields)) {
-        if (patch[k] !== undefined) sqlite.prepare(`UPDATE events SET ${k}=? WHERE id=?`).run(String(patch[k]).slice(0, max), id);
-      }
-      if (patch.shared !== undefined) sqlite.prepare('UPDATE events SET shared=? WHERE id=?').run(patch.shared ? 1 : 0, id);
+      const c = camposDeEvento({ ...ev, ...patch, shared: patch.shared ?? !!ev.shared });
+      sqlite.prepare(`UPDATE events SET title=?, notes=?, date=?, time=?, location=?, shared=?,
+        kind=?, recurrence=?, until=?, installments=?, amount=?, payee=?, estimated=?, assignee=? WHERE id=?`)
+        .run(c.title, c.notes, c.date, c.time, c.location, c.shared,
+          c.kind, c.recurrence, c.until, c.installments, c.amount, c.payee, c.estimated, c.assignee, id);
       return sqlite.prepare('SELECT * FROM events WHERE id=?').get(id);
     },
     deleteEvent(coupleId, id) {
-      return sqlite.prepare('DELETE FROM events WHERE id=? AND couple_id=?').run(id, coupleId).changes > 0;
+      const tx = sqlite.transaction(() => {
+        sqlite.prepare('DELETE FROM event_occurrences WHERE event_id=? AND couple_id=?').run(id, coupleId);
+        return sqlite.prepare('DELETE FROM events WHERE id=? AND couple_id=?').run(id, coupleId).changes > 0;
+      });
+      return tx();
+    },
+
+    /* ── Ocorrências: o que já aconteceu com cada repetição ── */
+    ocorrenciasFeitas(coupleId, de, ate) {
+      return sqlite.prepare(`SELECT * FROM event_occurrences
+        WHERE couple_id=? AND date>=? AND date<=?`).all(coupleId, de, ate);
+    },
+    // Marcar é criar a linha; desmarcar é apagá-la. Sem estado intermediário:
+    // ou aconteceu, ou não há o que guardar.
+    marcarOcorrencia(coupleId, eventId, date, { email, amount = null }) {
+      sqlite.prepare(`INSERT INTO event_occurrences (couple_id, event_id, date, done_at, done_by, amount)
+        VALUES (?, ?, ?, datetime('now'), ?, ?)
+        ON CONFLICT (event_id, date) DO UPDATE SET done_at=datetime('now'), done_by=excluded.done_by, amount=excluded.amount`)
+        .run(coupleId, eventId, date, email, amount);
+      return sqlite.prepare('SELECT * FROM event_occurrences WHERE event_id=? AND date=?').get(eventId, date);
+    },
+    desmarcarOcorrencia(coupleId, eventId, date) {
+      return sqlite.prepare('DELETE FROM event_occurrences WHERE couple_id=? AND event_id=? AND date=?')
+        .run(coupleId, eventId, date).changes > 0;
     },
 
     /* ── Listas ── */

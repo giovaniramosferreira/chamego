@@ -45,15 +45,22 @@ export default function InicioTab() {
   const [data, setData] = useState(null);
   const load = useCallback(() => {
     const today = new Date().toLocaleDateString('en-CA');
+    // Ocorrências, não eventos: o aluguel é uma linha no banco e doze no ano,
+    // e "Pra hoje" precisa enxergar a do mês — não a data de origem lá atrás.
+    const emDuasSemanas = new Date(Date.now() + 14 * 86_400_000).toLocaleDateString('en-CA');
     Promise.all([
-      api('/api/events').catch(() => ({ events: [] })),
+      api(`/api/agenda?de=${today}&ate=${emDuasSemanas}`).catch(() => ({ ocorrencias: [] })),
       api('/api/lists').catch(() => ({ lists: [] })),
       api('/api/connection').catch(() => ({})),
       // O badge de não lidas mora aqui desde que "Vocês" saiu da barra: ele
       // pendura na foto de perfil, que é a nova porta do chat.
       api('/api/badges').catch(() => ({ unread: 0 })),
-    ]).then(([ev, ls, conn, bg]) => setData({
-      events: (ev.events || []).filter((e) => e.date >= today).slice(0, 2),
+    ]).then(([ag, ls, conn, bg]) => setData({
+      // O que já foi resolvido (conta paga, faxina feita) não é "pra hoje".
+      events: (ag.ocorrencias || [])
+        .filter((o) => !o.done)
+        .map((o) => ({ ...o, id: `${o.eventId}-${o.date}` }))
+        .slice(0, 2),
       pending: (ls.lists || []).filter((l) => l.kind !== 'wishlist' && l.total > l.done).slice(0, 2),
       checkedIn: !!conn.myCheckin,
       partnerCheckin: conn.partnerCheckin || null,

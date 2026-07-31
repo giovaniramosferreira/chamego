@@ -18,6 +18,7 @@ import CozinhaTab from './tabs/CozinhaTab.jsx';
 import ReceitaDetail from './tabs/ReceitaDetail.jsx';
 import DespensaTab from './tabs/DespensaTab.jsx';
 import AchadosTab from './tabs/AchadosTab.jsx';
+import ContasTab from './tabs/ContasTab.jsx';
 import ChatScreen from './tabs/ChatScreen.jsx';
 import PlanosTab, { PlanoDetail } from './tabs/PlanosTab.jsx';
 import PresentesTab, { PresenteDetail } from './tabs/PresentesTab.jsx';
@@ -89,6 +90,7 @@ export default function AppShell() {
             <Route path="cozinha/:id" element={<ReceitaDetail />} />
             <Route path="despensa" element={<DespensaTab />} />
             <Route path="achados" element={<AchadosTab />} />
+            <Route path="contas" element={<ContasTab />} />
             <Route path="planos" element={<PlanosTab />} />
             <Route path="planos/:id" element={<PlanoDetail />} />
             <Route path="presentes" element={<PresentesTab />} />
