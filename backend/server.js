@@ -462,11 +462,11 @@ app.delete('/api/events/:id', withCouple, (req, res) => {
 });
 
 /* Listas */
-app.get('/api/lists', withCouple, (req, res) => res.json({ lists: db.listLists(req.couple.id) }));
+app.get('/api/lists', withCouple, (req, res) => res.json({ lists: db.listLists(req.couple.id, req.user.email) }));
 app.post('/api/lists', withCouple, (req, res) => {
-  const { title, icon, kind } = req.body || {};
+  const { title, icon, kind, theme } = req.body || {};
   if (!title?.trim()) return res.status(400).json({ error: 'Dê um nome à lista' });
-  res.json({ list: db.createList(req.couple.id, req.user.email, { title: title.trim(), icon, kind }) });
+  res.json({ list: db.createList(req.couple.id, req.user.email, { title: title.trim(), icon, kind, theme }) });
 });
 app.get('/api/lists/:id', withCouple, (req, res) => {
   const list = db.getList(req.couple.id, Number(req.params.id));
@@ -484,7 +484,7 @@ app.delete('/api/lists/:id', withCouple, (req, res) => {
 });
 app.post('/api/lists/:id/items', withCouple, (req, res) => {
   if (!req.body?.text?.trim()) return res.status(400).json({ error: 'Item vazio' });
-  const list = db.addItem(req.couple.id, Number(req.params.id), req.body.text.trim());
+  const list = db.addItem(req.couple.id, Number(req.params.id), req.body.text.trim(), req.body.assignee);
   if (!list) return res.status(404).json({ error: 'Lista não encontrada' });
   res.json({ list });
 });

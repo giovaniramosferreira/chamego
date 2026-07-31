@@ -526,6 +526,10 @@ export function createDb(file) {
     "ALTER TABLE events ADD COLUMN payee TEXT DEFAULT ''",
     'ALTER TABLE events ADD COLUMN estimated INTEGER DEFAULT 0',
     "ALTER TABLE events ADD COLUMN assignee TEXT DEFAULT ''",
+    // Lista com dono. É a mesma lista de sempre — o tema só decide o nome, o
+    // tom e pra quem os itens novos vão parar por padrão.
+    "ALTER TABLE lists ADD COLUMN theme TEXT DEFAULT ''",
+    "ALTER TABLE list_items ADD COLUMN assignee TEXT DEFAULT ''",
   ];
   for (const ddl of MIGRATIONS) {
     try { sqlite.prepare(ddl).run(); } catch { /* coluna já existe */ }
@@ -679,12 +683,15 @@ export function createDb(file) {
     },
 
     /* ── Listas ── */
-    listLists(coupleId) {
+    // `mine` é o que faz a lista temática funcionar: sem contar o que é de
+    // cada um, "pendências do maridão" seria só uma lista com outro nome.
+    listLists(coupleId, email = '') {
       return sqlite.prepare(`
         SELECT l.*,
           (SELECT COUNT(*) FROM list_items i WHERE i.list_id=l.id) AS total,
-          (SELECT COUNT(*) FROM list_items i WHERE i.list_id=l.id AND i.done=1) AS done
-        FROM lists l WHERE l.couple_id=? ORDER BY l.created_at DESC`).all(coupleId);
+          (SELECT COUNT(*) FROM list_items i WHERE i.list_id=l.id AND i.done=1) AS done,
+          (SELECT COUNT(*) FROM list_items i WHERE i.list_id=l.id AND i.done=0 AND i.assignee=?) AS mine
+        FROM lists l WHERE l.couple_id=? ORDER BY l.created_at DESC`).all(email, coupleId);
     },
     getList(coupleId, id) {
       const list = sqlite.prepare('SELECT * FROM lists WHERE id=? AND couple_id=?').get(id, coupleId);
@@ -692,10 +699,10 @@ export function createDb(file) {
       list.items = sqlite.prepare('SELECT * FROM list_items WHERE list_id=? ORDER BY done, position, id').all(id);
       return list;
     },
-    createList(coupleId, email, { title, icon = 'list', kind = 'shared' }) {
+    createList(coupleId, email, { title, icon = 'list', kind = 'shared', theme = '' }) {
       const k = ['shared', 'individual', 'wishlist'].includes(kind) ? kind : 'shared';
-      const r = sqlite.prepare('INSERT INTO lists (couple_id, created_by, title, icon, kind) VALUES (?, ?, ?, ?, ?)')
-        .run(coupleId, email, String(title).slice(0, 80), String(icon).slice(0, 20), k);
+      const r = sqlite.prepare('INSERT INTO lists (couple_id, created_by, title, icon, kind, theme) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(coupleId, email, String(title).slice(0, 80), String(icon).slice(0, 20), k, String(theme || '').slice(0, 30));
       return this.getList(coupleId, r.lastInsertRowid);
     },
     updateList(coupleId, id, { title, icon }) {
@@ -715,19 +722,23 @@ export function createDb(file) {
       tx();
       return true;
     },
-    addItem(coupleId, listId, text) {
+    addItem(coupleId, listId, text, assignee = '') {
       const list = sqlite.prepare('SELECT 1 FROM lists WHERE id=? AND couple_id=?').get(listId, coupleId);
       if (!list) return null;
       const pos = (sqlite.prepare('SELECT MAX(position) m FROM list_items WHERE list_id=?').get(listId)?.m || 0) + 1;
-      sqlite.prepare('INSERT INTO list_items (list_id, text, position) VALUES (?, ?, ?)').run(listId, String(text).slice(0, 200), pos);
+      sqlite.prepare('INSERT INTO list_items (list_id, text, position, assignee) VALUES (?, ?, ?, ?)')
+        .run(listId, String(text).slice(0, 200), pos, String(assignee || '').slice(0, 120));
       return this.getList(coupleId, listId);
     },
-    updateItem(coupleId, itemId, { text, done }) {
+    updateItem(coupleId, itemId, { text, done, assignee }) {
       const row = sqlite.prepare(`SELECT li.id, li.list_id FROM list_items li
         JOIN lists l ON l.id=li.list_id WHERE li.id=? AND l.couple_id=?`).get(itemId, coupleId);
       if (!row) return null;
       if (text !== undefined) sqlite.prepare('UPDATE list_items SET text=? WHERE id=?').run(String(text).slice(0, 200), itemId);
       if (done !== undefined) sqlite.prepare('UPDATE list_items SET done=? WHERE id=?').run(done ? 1 : 0, itemId);
+      // String vazia é "de ninguém em especial" — apagar o dono precisa ser
+      // possível, então `''` é valor válido e não o mesmo que não informado.
+      if (assignee !== undefined) sqlite.prepare('UPDATE list_items SET assignee=? WHERE id=?').run(String(assignee || '').slice(0, 120), itemId);
       return this.getList(coupleId, row.list_id);
     },
     deleteItem(coupleId, itemId) {
