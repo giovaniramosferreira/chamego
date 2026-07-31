@@ -32,6 +32,9 @@ export default function App() {
   return (
     <SessionProvider>
       <ToastProvider>
+        {/* Tampa da faixa do relógio. Uma só, no app inteiro: sem ela, tudo que
+            rola aparece embaralhado com a hora e a bateria do iPhone. */}
+        <div className="safe-top" aria-hidden="true" />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />

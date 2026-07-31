@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
 import { useSession } from '../../../lib/session-context.js';
+import { useAlturaDoTeclado } from '../../../lib/teclado.js';
 import { useToast } from '../../../lib/toast-context.js';
 import { AppHeader, Btn, Spinner } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
@@ -15,6 +16,7 @@ function fmtTime(iso) {
 export default function ChatScreen({ onRead }) {
   const nav = useNavigate();
   const { user, partner } = useSession();
+  const teclado = useAlturaDoTeclado();
   const { toast } = useToast();
   const [msgs, setMsgs] = useState(null);
   const [text, setText] = useState('');
@@ -94,7 +96,10 @@ export default function ChatScreen({ onRead }) {
         <div ref={endRef} />
       </div>
 
-      <form onSubmit={send} className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-bg/95 backdrop-blur px-5 pt-2 pb-[max(env(safe-area-inset-bottom),10px)]">
+      {/* Sobe com o teclado: no iPhone o rodapé fixo não sai da frente sozinho,
+          e a pessoa acaba digitando atrás do teclado. */}
+      <form onSubmit={send} style={{ transform: `translate(-50%, -${teclado}px)` }}
+        className="fixed bottom-0 left-1/2 w-full max-w-[430px] bg-bg/95 backdrop-blur px-5 pt-2 pb-[max(env(safe-area-inset-bottom),10px)] transition-transform duration-200">
         <div className="flex gap-2 bg-surface rounded-full shadow-[inset_0_0_0_1px_var(--line-2)] p-1.5">
           <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Mensagem…"
             className="flex-1 bg-transparent px-3 py-1.5 outline-none text-ink placeholder:text-ink-3" />
