@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, apiUpload } from '../../../lib/api.js';
 import { useDataRefresh } from '../../../lib/refresh.js';
 import { useToast } from '../../../lib/toast-context.js';
-import { Card, Row, Sheet, Field, Btn, Spinner, EmptyState, RowList } from '../../../ui/kit.jsx';
+import { Card, Row, Sheet, Field, Btn, Spinner, EmptyState, RowList, TopBar } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 const todayISO = () => new Date().toLocaleDateString('en-CA');
@@ -35,7 +35,7 @@ export default function MomentosTab() {
 
   return (
     <div>
-      <h1 className="font-display text-[1.9rem] pt-6 pb-3">Momentos</h1>
+      <TopBar><h1 className="font-display text-[1.9rem] pt-6 pb-3">Momentos</h1></TopBar>
 
       <Card className="!p-0 mb-4">
         <Row icon="image" title="Álbuns" sub="Junte as fotos de vocês" onClick={() => nav('/app/albuns')} />

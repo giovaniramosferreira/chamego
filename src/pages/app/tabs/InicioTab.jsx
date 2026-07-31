@@ -5,7 +5,7 @@ import { useDataRefresh } from '../../../lib/refresh.js';
 import { useSession } from '../../../lib/session-context.js';
 import { useToast } from '../../../lib/toast-context.js';
 import { heroDoMomento } from '../../../lib/hero.js';
-import { Badge, Btn, Card, Logo, Row, RowList, Spinner } from '../../../ui/kit.jsx';
+import { Badge, Btn, Card, Logo, Row, RowList, Spinner, TopBar } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 import InstallPrompt from '../../../components/InstallPrompt.jsx';
 import DiscoveryCard from '../../../components/DiscoveryCard.jsx';
@@ -101,7 +101,7 @@ export default function InicioTab() {
 
   return (
     <div>
-      <div className="flex items-center justify-between pt-5 pb-2">
+      <TopBar className="flex items-center justify-between pt-5 pb-2">
         <Logo className="text-xl" />
         <div className="flex items-center gap-1">
           <Link to="/app/mais" aria-label="Tudo do Chamego"
@@ -117,8 +117,8 @@ export default function InicioTab() {
             {data?.unread > 0 && <Badge count={data.unread} className="absolute -top-1 -right-1" />}
           </Link>
         </div>
-      </div>
-      <h1 className="font-display text-2xl leading-tight mb-4">{greeting()}, {solo ? firstName : couple.name}</h1>
+      </TopBar>
+      <h1 className="font-display text-2xl leading-tight mb-4 pt-1">{greeting()}, {solo ? firstName : couple.name}</h1>
 
       {/* O topo muda com a hora: às 20h a pergunta é o jantar, de manhã é o
           dia que vem. O que sobe pra cá sai da lista de baixo — promover não

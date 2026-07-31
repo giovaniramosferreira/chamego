@@ -138,17 +138,34 @@ export function EmptyState({ icon, title, children, actions }) {
   );
 }
 
+// Barra do topo que fica parada enquanto a tela rola por baixo.
+//
+// Dois detalhes carregam o peso aqui:
+//   `top: var(--sat)` — o cabeçalho para logo abaixo da faixa do relógio, não
+//   embaixo dela. Com `top: 0` ele grudaria atrás da hora do iPhone.
+//   `-mx-5 px-5` — o conteúdo tem 20px de respiro nas laterais; sem estender a
+//   barra até a borda, o que rola apareceria pelas frestas dos lados.
+export function TopBar({ children, className = '' }) {
+  return (
+    <div className={`sticky top-[var(--sat)] z-30 -mx-5 px-5 bg-bg ${className}`}>
+      {children}
+    </div>
+  );
+}
+
 export function AppHeader({ back, title, right }) {
   return (
-    <div className="flex items-center gap-3 py-3 min-h-[52px]">
-      {back && (
-        <button onClick={back} aria-label="Voltar" className="w-9 h-9 rounded-full grid place-items-center bg-surface shadow-[inset_0_0_0_1px_var(--line)] text-ink">
-          <Icon name="back" size={18} />
-        </button>
-      )}
-      <div className="flex-1 font-display text-lg">{title || ''}</div>
-      {right}
-    </div>
+    <TopBar>
+      <div className="flex items-center gap-3 py-3 min-h-[52px]">
+        {back && (
+          <button onClick={back} aria-label="Voltar" className="w-9 h-9 rounded-full grid place-items-center bg-surface shadow-[inset_0_0_0_1px_var(--line)] text-ink">
+            <Icon name="back" size={18} />
+          </button>
+        )}
+        <div className="flex-1 font-display text-lg">{title || ''}</div>
+        {right}
+      </div>
+    </TopBar>
   );
 }
 
