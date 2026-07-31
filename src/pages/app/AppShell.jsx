@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Icon from '../../ui/icons.jsx';
-import { Badge } from '../../ui/kit.jsx';
-import { api } from '../../lib/api.js';
 import { registrarAberturaPwa } from '../../lib/pwa.js';
 import QuickAdd from '../../components/QuickAdd.jsx';
 import ConnectionBanner from '../../components/ConnectionBanner.jsx';
@@ -32,12 +30,14 @@ import IntimidadeTab from './tabs/IntimidadeTab.jsx';
 import AlbunsTab, { AlbumDetail } from './tabs/AlbunsTab.jsx';
 import DateIdeasTab, { DateIdeaDetail } from './tabs/DateIdeasTab.jsx';
 
+// Quatro abas e o "+" no centro. "Vocês" saiu da barra e virou a foto de
+// perfil no topo do Início: é onde a mão procura o outro, e libera o centro
+// pro botão que mais se usa.
 const TABS = [
   { path: '/app', icon: 'home', label: 'Início', end: true },
   { path: '/app/agenda', icon: 'calendar', label: 'Agenda' },
   { path: '/app/listas', icon: 'list', label: 'Listas' },
   { path: '/app/momentos', icon: 'moments', label: 'Momentos' },
-  { path: '/app/voces', icon: 'together', label: 'Vocês' },
 ];
 
 // Qual tipo o "+" sugere depende de onde a pessoa está.
@@ -49,36 +49,25 @@ function contextFromPath(pathname) {
   return 'inicio';
 }
 
+function Aba({ tab }) {
+  return (
+    <NavLink to={tab.path} end={tab.end}
+      className={({ isActive }) => `flex-1 flex flex-col items-center gap-0.5 py-1 text-[11px] font-medium transition-colors ${isActive ? 'text-accent' : 'text-ink-3'}`}>
+      <Icon name={tab.icon} size={22} />
+      <span>{tab.label}</span>
+    </NavLink>
+  );
+}
+
 export default function AppShell() {
   const location = useLocation();
   // Chat e modo cozinha são telas de foco: a tab bar sai da frente.
   const hideNav = location.pathname === '/app/voces/chat'
     || (location.pathname.startsWith('/app/cozinha/') && location.search.includes('modo=cozinha'));
-  const isTab = TABS.some((t) => t.path === location.pathname);
   const [adding, setAdding] = useState(false);
-  const [badges, setBadges] = useState({ unread: 0 });
 
   // Quem entrou pelo ícone da tela de início conta uma vez por dia.
   useEffect(() => { registrarAberturaPwa(); }, []);
-
-  const loadBadges = useCallback(() => {
-    api('/api/badges').then(setBadges).catch(() => {});
-  }, []);
-
-  // Mensagem nova precisa aparecer sem abrir o chat. Mas o pulso só bate com
-  // o app à vista: request no ar quando a tela apaga morre junto com ela, e
-  // o app lia isso como internet caída.
-  useEffect(() => {
-    const visible = () => document.visibilityState === 'visible';
-    const tick = () => { if (visible()) loadBadges(); };
-    tick();
-    const t = setInterval(tick, 20_000);
-    document.addEventListener('visibilitychange', tick);
-    return () => {
-      clearInterval(t);
-      document.removeEventListener('visibilitychange', tick);
-    };
-  }, [loadBadges, location.pathname]);
 
   return (
     <div className="min-h-screen bg-bg flex justify-center">
@@ -93,7 +82,7 @@ export default function AppShell() {
             <Route path="listas/:id" element={<ListaDetail />} />
             <Route path="momentos" element={<MomentosTab />} />
             <Route path="voces" element={<VocesTab />} />
-            <Route path="voces/chat" element={<ChatScreen onRead={loadBadges} />} />
+            <Route path="voces/chat" element={<ChatScreen />} />
             <Route path="mais" element={<MaisTab />} />
             <Route path="plano" element={<PlanoTab />} />
             <Route path="cozinha" element={<CozinhaTab />} />
@@ -121,29 +110,21 @@ export default function AppShell() {
           </Routes>
         </main>
 
-        {/* Um "+" só pro app inteiro: não é preciso acertar a aba antes de
-            registrar. Nas telas de dentro (Planos, Álbuns…) quem manda é a
-            ação da própria tela — nada de dois botões redondos na mesma tela. */}
-        {isTab && (
-          <div className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-5 z-30 flex justify-end pointer-events-none">
+        {/* Duas abas, o "+", mais duas abas. O botão é o centro de gravidade do
+            polegar — e um "+" só pro app inteiro significa não ter que acertar
+            a aba antes de registrar. Nas telas de dentro (Planos, Álbuns…) quem
+            manda é a ação da própria tela: nada de dois botões redondos juntos. */}
+        <nav className={`${hideNav ? 'hidden' : ''} fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-surface border-t border-line flex items-end px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2`}>
+          {TABS.slice(0, 2).map((t) => <Aba key={t.path} tab={t} />)}
+
+          <div className="flex-1 flex justify-center">
             <button onClick={() => setAdding(true)} aria-label="Adicionar"
-              className="pointer-events-auto w-14 h-14 rounded-full bg-accent text-accent-ink shadow-[0_6px_18px_rgba(189,106,75,.45)] grid place-items-center hover:bg-accent-press active:scale-95 transition-all">
+              className="-mt-7 w-14 h-14 rounded-full bg-accent text-accent-ink shadow-[0_6px_18px_rgba(189,106,75,.45)] grid place-items-center hover:bg-accent-press active:scale-95 transition-all">
               <Icon name="plus" size={24} />
             </button>
           </div>
-        )}
 
-        <nav className={`${hideNav ? 'hidden' : ''} fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-surface border-t border-line flex justify-around px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2`}>
-          {TABS.map((t) => (
-            <NavLink key={t.path} to={t.path} end={t.end}
-              className={({ isActive }) => `relative flex flex-col items-center gap-0.5 px-3 py-1 text-[11px] font-medium transition-colors ${isActive ? 'text-accent' : 'text-ink-3'}`}>
-              <Icon name={t.icon} size={22} />
-              {t.path === '/app/voces' && badges.unread > 0 && (
-                <Badge count={badges.unread} className="absolute top-0 right-1.5" />
-              )}
-              <span>{t.label}</span>
-            </NavLink>
-          ))}
+          {TABS.slice(2).map((t) => <Aba key={t.path} tab={t} />)}
         </nav>
       </div>
 
