@@ -6,7 +6,7 @@ import { useSession } from '../../../lib/session-context.js';
 import { useToast } from '../../../lib/toast-context.js';
 import { formatarBRL, paraCampo, paraCentavos } from '../../../lib/dinheiro.js';
 import { FREQUENCIAS, TIPOS, podeMarcar, tipoDe } from '../../../lib/tipos-agenda.js';
-import { Card, Sheet, Field, Btn, Chip, Spinner, EmptyState } from '../../../ui/kit.jsx';
+import { Card, Sheet, Field, Btn, Chip, Spinner, EmptyState, TopBar } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 const DOW = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
@@ -260,12 +260,12 @@ export default function AgendaTab() {
 
   return (
     <div>
-      <div className="flex items-end justify-between pt-6 pb-3">
+      <TopBar className="flex items-end justify-between pt-6 pb-3">
         <h1 className="font-display text-[1.9rem]">Agenda</h1>
         <button onClick={subscribe} className="flex items-center gap-1.5 text-sm text-accent font-medium py-2" aria-label="Assinar calendário">
           <Icon name="link" size={15} /> No meu calendário
         </button>
-      </div>
+      </TopBar>
 
       <Card className="mb-3 !p-4">
         <div className="flex items-center justify-between mb-3">

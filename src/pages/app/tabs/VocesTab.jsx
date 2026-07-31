@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
 import { useSession } from '../../../lib/session-context.js';
 import { useToast } from '../../../lib/toast-context.js';
-import { Card, RowList, Row, Sheet, Field, Btn, Spinner, LockedRow } from '../../../ui/kit.jsx';
+import { Card, RowList, Row, Sheet, Field, Btn, Spinner, LockedRow, TopBar } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 const MOODS = [['😀', 'ótimo'], ['🙂', 'bem'], ['😐', 'neutro'], ['😔', 'pra baixo'], ['😴', 'cansado'], ['🥰', 'apaixonado']];
@@ -22,13 +22,13 @@ export default function VocesTab() {
     <div>
       {/* A engrenagem vem pra cá porque a foto de perfil agora abre esta tela.
           Sem isso, Configurações ficaria dois toques mais longe do que era. */}
-      <div className="flex items-center justify-between pt-6 pb-3">
+      <TopBar className="flex items-center justify-between pt-6 pb-3">
         <h1 className="font-display text-[1.9rem]">Vocês</h1>
         <button onClick={() => nav('/app/config')} aria-label="Configurações"
           className="w-9 h-9 rounded-full grid place-items-center text-ink-2 hover:bg-accent-soft/50">
           <Icon name="settings" size={19} />
         </button>
-      </div>
+      </TopBar>
 
       {/* 1. Check-in de hoje */}
       <Card className="!p-0 mb-3">

@@ -5,7 +5,7 @@ import { useDataRefresh } from '../../../lib/refresh.js';
 import { useSession } from '../../../lib/session-context.js';
 import { useToast } from '../../../lib/toast-context.js';
 import { TEMAS, temaDe } from '../../../lib/temas-lista.js';
-import { Card, Row, Sheet, Field, Btn, Chip, Spinner, EmptyState, RowList } from '../../../ui/kit.jsx';
+import { Card, Row, Sheet, Field, Btn, Chip, Spinner, EmptyState, RowList, TopBar } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 // Wishlist deixou de ser um tipo de lista: ela mora em Datas & presentes, num
@@ -64,7 +64,7 @@ export default function ListasTab() {
 
   return (
     <div>
-      <h1 className="font-display text-[1.9rem] pt-6 pb-3">Listas</h1>
+      <TopBar><h1 className="font-display text-[1.9rem] pt-6 pb-3">Listas</h1></TopBar>
 
       <div className="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-5 px-5 [scrollbar-width:none]">
         {FILTERS.map(([k, label]) => <Chip key={k} active={filter === k} onClick={() => setFilter(k)}>{label}</Chip>)}
