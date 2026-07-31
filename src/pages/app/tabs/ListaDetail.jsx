@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
 import { useSession } from '../../../lib/session-context.js';
+import { useAlturaDoTeclado } from '../../../lib/teclado.js';
 import { useToast } from '../../../lib/toast-context.js';
 import { donoPadrao, temaDe } from '../../../lib/temas-lista.js';
 import { AppHeader, Card, Spinner, Btn, CheckRow } from '../../../ui/kit.jsx';
@@ -11,6 +12,7 @@ export default function ListaDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const { user, partner } = useSession();
+  const teclado = useAlturaDoTeclado();
   const { toast, undoable } = useToast();
   const [list, setList] = useState(null);
   const [text, setText] = useState('');
@@ -133,7 +135,10 @@ export default function ListaDetail() {
         ))}
       </div>
 
-      <form onSubmit={addItem} className="fixed bottom-[76px] left-1/2 -translate-x-1/2 w-full max-w-[430px] px-5 pb-2">
+      {/* Com o teclado aberto, o campo sobe e cola nele — a barra de abas some
+          por baixo, que é onde ela deve estar nessa hora. */}
+      <form onSubmit={addItem} style={{ transform: `translate(-50%, -${teclado}px)`, bottom: teclado ? 8 : 76 }}
+        className="fixed left-1/2 w-full max-w-[430px] px-5 pb-2 transition-transform duration-200">
         <div className="flex gap-2 bg-surface rounded-btn shadow-[0_2px_10px_rgba(43,37,33,.1),inset_0_0_0_1px_var(--line-2)] p-1.5">
           <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)}
             placeholder={isWishlist ? 'Adicionar desejo…' : 'Adicionar item…'}

@@ -17,6 +17,9 @@
   --accent-soft: color-mix(in srgb, var(--accent) 13%, var(--surface));
   --accent-line: color-mix(in srgb, var(--accent) 30%, transparent);
   --ease: cubic-bezier(.22, .61, .36, 1);
+  /* Faixa do sistema no topo (relógio/bateria). Em variável, e não no `env()`
+     direto, pra dar pra simular um iPhone com entalhe no teste automatizado. */
+  --sat: env(safe-area-inset-top, 0px);
 }
 
 body {
@@ -25,6 +28,31 @@ body {
   font-family: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* A faixa do relógio e da bateria do iPhone.
+   O app pede `viewport-fit=cover` (é o que faz a barra de baixo respeitar a
+   linha do home indicator), e o preço disso é que a página começa ATRÁS do
+   relógio. Sem as duas regras abaixo, o cabeçalho nasce por baixo da hora e
+   todo conteúdo que rola passa embaralhado com os ícones do sistema. */
+#root {
+  padding-top: var(--sat);
+}
+
+/* Tampa opaca sobre a área do sistema: o que rola some por baixo dela em vez
+   de aparecer misturado com a hora.
+   A camada é 35 de propósito: acima do conteúdo que rola e do botão flutuante
+   (30), mas ABAIXO das folhas (40) e dos avisos (50) — senão, com uma folha
+   aberta, apareceria uma faixa clara em cima do véu escuro. */
+.safe-top {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--sat);
+  background: var(--bg);
+  z-index: 35;
+  pointer-events: none;
 }
 
 ::selection { background: var(--accent); color: var(--accent-ink); }

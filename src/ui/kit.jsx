@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import Icon from './icons.jsx';
+import { trazerParaAVista, useAlturaDoTeclado } from '../lib/teclado.js';
 
 const BTN_BASE = 'inline-flex items-center justify-center gap-2 rounded-btn font-semibold text-base px-6 py-3.5 transition-all duration-200 ease-brand disabled:opacity-50 disabled:pointer-events-none';
 const BTN_STYLES = {
@@ -167,10 +168,17 @@ export function Logo({ className = '' }) {
 
 // Bottom sheet para formulários de criação/edição (mobile-first).
 export function Sheet({ title, onClose, children, z = 'z-40' }) {
+  // A folha sobe junto com o teclado e encolhe na mesma medida: sem isso, o
+  // campo em que a pessoa está digitando fica atrás do teclado, e ela escreve
+  // às cegas. O `onFocusCapture` cuida do resto — num formulário comprido, não
+  // basta a folha subir, o campo focado precisa entrar no campo de visão.
+  const teclado = useAlturaDoTeclado();
   return (
     <div className={`fixed inset-0 ${z} flex items-end justify-center`} role="dialog" aria-modal="true">
       <button aria-label="Fechar" onClick={onClose} className="absolute inset-0 bg-ink/40 backdrop-blur-[2px] animate-[fade_.2s_ease]" />
-      <div className="relative w-full max-w-[430px] bg-bg rounded-t-[22px] px-5 pt-3 pb-[max(env(safe-area-inset-bottom),20px)] shadow-[0_-8px_30px_rgba(43,37,33,.18)] max-h-[88vh] overflow-y-auto sheet-enter">
+      <div onFocusCapture={trazerParaAVista}
+        style={{ marginBottom: teclado, maxHeight: `calc(88vh - ${teclado}px)` }}
+        className="relative w-full max-w-[430px] bg-bg rounded-t-[22px] px-5 pt-3 pb-[max(env(safe-area-inset-bottom),20px)] shadow-[0_-8px_30px_rgba(43,37,33,.18)] overflow-y-auto sheet-enter transition-[margin,max-height] duration-200">
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-ink-3/30" />
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-xl">{title}</h2>
