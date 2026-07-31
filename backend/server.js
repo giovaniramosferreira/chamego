@@ -1152,8 +1152,27 @@ app.post('/api/track', requireAuth, (req, res) => {
 // SPA em produção
 const distDir = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir));
-  app.get(/^\/(?!api).*/, (req, res) => res.sendFile(path.join(distDir, 'index.html')));
+  app.use(express.static(distDir, {
+    setHeaders(res, caminho) {
+      const arquivo = path.basename(caminho);
+      // O service worker precisa ser buscado da rede a cada visita. Guardado
+      // por engano, um deploy demora até um dia pra chegar em quem já
+      // instalou o app — e é ele quem controla o cache de todo o resto.
+      if (arquivo === 'sw.js' || arquivo === 'manifest.webmanifest' || arquivo === 'index.html') {
+        res.setHeader('Cache-Control', 'no-cache');
+        return;
+      }
+      // Arquivo de /assets leva hash no nome: muda o conteúdo, muda o nome.
+      // Pode ser guardado pra sempre sem risco de servir versão velha.
+      if (caminho.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
+  }));
+  app.get(/^\/(?!api).*/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
 }
 
 if (process.env.NODE_ENV !== 'test') {

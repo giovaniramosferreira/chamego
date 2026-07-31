@@ -3,6 +3,7 @@ import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Icon from '../../ui/icons.jsx';
 import { Badge } from '../../ui/kit.jsx';
 import { api } from '../../lib/api.js';
+import { registrarAberturaPwa } from '../../lib/pwa.js';
 import QuickAdd from '../../components/QuickAdd.jsx';
 import ConnectionBanner from '../../components/ConnectionBanner.jsx';
 import UpgradeGate from '../../components/UpgradeGate.jsx';
@@ -56,6 +57,9 @@ export default function AppShell() {
   const isTab = TABS.some((t) => t.path === location.pathname);
   const [adding, setAdding] = useState(false);
   const [badges, setBadges] = useState({ unread: 0 });
+
+  // Quem entrou pelo ícone da tela de início conta uma vez por dia.
+  useEffect(() => { registrarAberturaPwa(); }, []);
 
   const loadBadges = useCallback(() => {
     api('/api/badges').then(setBadges).catch(() => {});

@@ -1,7 +1,10 @@
 // Service worker mínimo: instalável na tela de início e com casca offline.
 // Estratégia: network-first para navegação e API (dado de casal precisa ser
 // fresco), cache-first para estáticos com hash e para as fotos enviadas.
-const CACHE = 'chamego-v1';
+// Suba este número sempre que mexer neste arquivo. É o que faz o `activate`
+// jogar fora o cache antigo — sem isso os arquivos com hash de versões velhas
+// ficam guardados para sempre, e a limpeza aqui embaixo nunca acha nada.
+const CACHE = 'chamego-v2';
 const SHELL = ['/', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
