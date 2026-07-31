@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
 import { useDataRefresh } from '../../../lib/refresh.js';
+import { useSession } from '../../../lib/session-context.js';
 import { useToast } from '../../../lib/toast-context.js';
+import { TEMAS, temaDe } from '../../../lib/temas-lista.js';
 import { Card, Row, Sheet, Field, Btn, Chip, Spinner, EmptyState, RowList } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
@@ -16,11 +18,12 @@ const FILTERS = [['todas', 'Todas'], ['shared', 'Compartilhadas'], ['individual'
 
 export default function ListasTab() {
   const nav = useNavigate();
+  const { partner } = useSession();
   const { toast } = useToast();
   const [lists, setLists] = useState(null);
   const [filter, setFilter] = useState('todas');
   const [sheet, setSheet] = useState(false);
-  const [form, setForm] = useState({ title: '', kind: 'shared' });
+  const [form, setForm] = useState({ title: '', kind: 'shared', theme: '' });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => { api('/api/lists').then((d) => setLists(d.lists)).catch(() => setLists([])); }, []);
@@ -35,13 +38,28 @@ export default function ListasTab() {
     setSaving(true);
     try {
       const k = KINDS.find((x) => x.kind === form.kind);
-      const { list } = await api('/api/lists', { method: 'POST', body: { title: form.title.trim(), kind: form.kind, icon: k.icon } });
-      setSheet(false); setForm({ title: '', kind: 'shared' });
+      const t = temaDe(form.theme);
+      const { list } = await api('/api/lists', {
+        method: 'POST',
+        body: { title: form.title.trim(), kind: form.kind, icon: t.key ? t.icon : k.icon, theme: form.theme },
+      });
+      setSheet(false); setForm({ title: '', kind: 'shared', theme: '' });
       toast('Lista criada ✓');
       nav(`/app/listas/${list.id}`);
     } catch (err) {
       toast(err.message, { tone: 'error' });
     } finally { setSaving(false); }
+  }
+
+  // Escolher o tema já escreve o nome: a lista temática existe pra ser criada
+  // em dois toques, não pra dar mais um campo em branco pra preencher.
+  function escolherTema(key) {
+    const t = temaDe(key);
+    setForm((f) => ({
+      ...f,
+      theme: key,
+      title: !f.title.trim() || f.title === temaDe(f.theme).title ? t.title : f.title,
+    }));
   }
 
   return (
@@ -63,7 +81,9 @@ export default function ListasTab() {
           {shown.map((l) => {
             const k = KINDS.find((x) => x.kind === l.kind);
             const sub = l.kind === 'wishlist' ? `${l.total} ${l.total === 1 ? 'item salvo' : 'itens salvos'} · wishlist`
-              : `${l.done} de ${l.total} concluídos · ${(k?.label || 'Compartilhada').toLowerCase()}`;
+              // O que é seu vem primeiro: é a única parte da lista que cobra você.
+              : l.mine > 0 ? `${l.mine} ${l.mine === 1 ? 'pendência sua' : 'pendências suas'} · ${l.done} de ${l.total} concluídos`
+                : `${l.done} de ${l.total} concluídos · ${(k?.label || 'Compartilhada').toLowerCase()}`;
             return (
               <Card key={l.id} className="!p-0">
                 <Row icon={l.icon || k?.icon || 'list'} title={l.title} sub={sub} onClick={() => nav(`/app/listas/${l.id}`)} />
@@ -90,6 +110,15 @@ export default function ListasTab() {
       {sheet && (
         <Sheet title="Nova lista" onClose={() => setSheet(false)}>
           <form onSubmit={create}>
+            <p className="text-sm font-medium text-ink-2 mb-2">Que tipo de lista?</p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {TEMAS.filter((t) => !t.key || partner).map((t) => (
+                <Chip key={t.key || 'comum'} active={form.theme === t.key} onClick={() => escolherTema(t.key)}>
+                  {t.label}
+                </Chip>
+              ))}
+            </div>
+            {form.theme && <p className="text-xs text-ink-3 -mt-2 mb-4">{temaDe(form.theme).sub}. Os itens novos já nascem com dono — e dá pra trocar item a item.</p>}
             <Field label="Nome da lista" placeholder="Compras da semana" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus required />
             <p className="text-sm font-medium text-ink-2 mb-2">Tipo</p>
             <div className="grid grid-cols-2 gap-2 mb-5">

@@ -35,6 +35,10 @@ const PATHS = {
   gift: <><rect x="4" y="9" width="16" height="11" rx="1.5" /><path d="M4 13h16M12 9v11" /><path d="M12 9C10 9 7.5 8.6 7.5 6.7 7.5 5.2 9.8 5 12 9zM12 9c2 0 4.5-.4 4.5-2.3C16.5 5.2 14.2 5 12 9z" /></>,
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M6 11a6 6 0 0 0 12 0M12 17v4" /></>,
   shopping: <><path d="M6 8h12l-1 12H7z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /></>,
+  // A agenda passou a falar de dinheiro e de tarefa de casa: sem ícone próprio,
+  // conta e faxina apareceriam com a estrela genérica de "sei lá o que é isso".
+  money: <><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.6" /><path d="M6.5 12h.01M17.5 12h.01" strokeLinecap="round" /></>,
+  broom: <><path d="M14 3l7 7" strokeLinecap="round" /><path d="M13 8.5 15.5 11l-6 6H5l1.2-3.6z" /><path d="M5 21h9" strokeLinecap="round" /></>,
 };
 
 export default function Icon({ name, size = 20, className = '', stroke }) {

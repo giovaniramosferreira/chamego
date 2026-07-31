@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../../lib/api.js';
+import { useSession } from '../../../lib/session-context.js';
 import { useToast } from '../../../lib/toast-context.js';
+import { donoPadrao, temaDe } from '../../../lib/temas-lista.js';
 import { AppHeader, Card, Spinner, Btn, CheckRow } from '../../../ui/kit.jsx';
 import Icon from '../../../ui/icons.jsx';
 
 export default function ListaDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { user, partner } = useSession();
   const { toast, undoable } = useToast();
   const [list, setList] = useState(null);
   const [text, setText] = useState('');
@@ -23,12 +26,15 @@ export default function ListaDetail() {
     e.preventDefault();
     const value = text.trim();
     if (!value) return;
-    const temp = { id: `tmp-${Date.now()}`, text: value, done: 0, pending: true };
+    // Numa lista de pendências dele, o item novo já é dele: ninguém quer
+    // marcar "de quem é" trinta vezes seguidas.
+    const dono = donoPadrao(list.theme, { meuEmail: user.email, parceiro: partner });
+    const temp = { id: `tmp-${Date.now()}`, text: value, done: 0, assignee: dono, pending: true };
     setList((l) => ({ ...l, items: [...l.items, temp] }));
     setText('');
     inputRef.current?.focus();
     try {
-      const { list: fresh } = await api(`/api/lists/${id}/items`, { method: 'POST', body: { text: value } });
+      const { list: fresh } = await api(`/api/lists/${id}/items`, { method: 'POST', body: { text: value, assignee: dono } });
       setList(fresh);
     } catch (err) {
       setList((l) => ({ ...l, items: l.items.filter((i) => i.id !== temp.id) }));
@@ -43,6 +49,23 @@ export default function ListaDetail() {
     setList((l) => ({ ...l, items: l.items.map((i) => (i.id === item.id ? { ...i, done: item.done ? 0 : 1 } : i)) }));
     try {
       const { list: fresh } = await api(`/api/items/${item.id}`, { method: 'PATCH', body: { done: !item.done } });
+      setList(fresh);
+    } catch (err) {
+      setList(before);
+      toast(err.message, { tone: 'error' });
+    }
+  }
+
+  // O tema sugere; a pessoa decide. Um toque no nome gira entre os dois e
+  // "de ninguém em especial".
+  async function girarDono(item) {
+    if (String(item.id).startsWith('tmp-') || !partner) return;
+    const ordem = ['', user.email, partner.email];
+    const proximo = ordem[(ordem.indexOf(item.assignee || '') + 1) % ordem.length];
+    const before = list;
+    setList((l) => ({ ...l, items: l.items.map((i) => (i.id === item.id ? { ...i, assignee: proximo } : i)) }));
+    try {
+      const { list: fresh } = await api(`/api/items/${item.id}`, { method: 'PATCH', body: { assignee: proximo } });
       setList(fresh);
     } catch (err) {
       setList(before);
@@ -74,6 +97,13 @@ export default function ListaDetail() {
 
   const isWishlist = list.kind === 'wishlist';
   const done = list.items.filter((i) => i.done).length;
+  const tema = temaDe(list.theme);
+  const nomeDoDono = (email) => {
+    if (!email) return 'dos dois';
+    if (email === user.email) return 'você';
+    return partner?.name?.split(' ')[0] || 'seu par';
+  };
+  const meus = list.items.filter((i) => !i.done && i.assignee === user.email).length;
 
   return (
     <div>
@@ -81,14 +111,24 @@ export default function ListaDetail() {
         right={<button onClick={removeList} aria-label="Excluir lista" className="w-9 h-9 rounded-full grid place-items-center text-ink-2 hover:bg-accent-soft/50"><Icon name="trash" size={17} /></button>} />
 
       {list.items.length > 0 && !isWishlist && (
-        <p className="text-sm text-ink-2 mb-3">{done} de {list.items.length} concluídos</p>
+        <p className="text-sm text-ink-2 mb-3">
+          {done} de {list.items.length} concluídos{meus > 0 ? ` · ${meus} ${meus === 1 ? 'é sua' : 'são suas'}` : ''}
+        </p>
       )}
 
       <div className="space-y-2 mb-4">
-        {list.items.length === 0 && <Card className="text-center text-ink-2 text-sm py-6">Adicione o primeiro item abaixo 👇</Card>}
+        {list.items.length === 0 && (
+          <Card className="text-center text-ink-2 text-sm py-6">{tema.vazio || 'Adicione o primeiro item abaixo 👇'}</Card>
+        )}
         {list.items.map((item) => (
           <Card key={item.id} className={`!p-0 ${item.pending ? 'opacity-60' : ''}`}>
-            <CheckRow done={!!item.done} text={item.text} onToggle={() => toggle(item)} onRemove={() => del(item)} />
+            <CheckRow done={!!item.done} text={item.text} onToggle={() => toggle(item)} onRemove={() => del(item)}
+              right={partner && (
+                <button onClick={() => girarDono(item)}
+                  className={`flex-none text-[.7rem] px-2 py-1 rounded-full ${item.assignee ? 'bg-accent-soft text-accent-press' : 'text-ink-3'}`}>
+                  {nomeDoDono(item.assignee)}
+                </button>
+              )} />
           </Card>
         ))}
       </div>

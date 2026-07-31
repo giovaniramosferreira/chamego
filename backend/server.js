@@ -16,6 +16,7 @@ import { compararDespensa, normalizar, rotuloFalta } from './receita/ingrediente
 import { cadenciaAposFeedback, listaDoDia, melhorMomentoDeAvisar } from './receita/lista.js';
 import { extrairIngredientes, visaoDisponivel } from './receita/visao.js';
 import { extrairDoLink, iaDisponivel } from './receita/achados.js';
+import { descreverRecorrencia, ocorrenciasEntre, parcelaDe } from './agenda/recorrencia.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -189,6 +190,12 @@ const withCouple = [requireAuth, requireCouple];
 
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
 const isTime = (v) => v === '' || v === undefined || /^\d{2}:\d{2}$/.test(v);
+// Data do servidor em ISO local. A agenda é lida no fuso de quem mora na casa.
+const hojeISO = () => new Date().toLocaleDateString('en-CA');
+const somaDiasIso = (iso, n) => {
+  const [a, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, d) + n * 86_400_000).toISOString().slice(0, 10);
+};
 
 /* ── Espaço do casal ─────────────────────────────────────────────────────── */
 
@@ -331,13 +338,116 @@ function hasEntitlement(coupleId, name) {
 }
 
 /* Agenda */
+
+// A agenda virada pra fora é uma lista de OCORRÊNCIAS, não de eventos: o
+// aluguel é uma linha no banco e doze no ano. Quem consome (Início, calendário,
+// contas) sempre pergunta por uma janela de datas.
+function ocorrenciasDe(coupleId, de, ate) {
+  const eventos = db.listEvents(coupleId);
+  const feitas = new Map(db.ocorrenciasFeitas(coupleId, de, ate).map((o) => [`${o.event_id}:${o.date}`, o]));
+  const saida = [];
+
+  for (const ev of eventos) {
+    for (const data of ocorrenciasEntre(ev, de, ate)) {
+      const feita = feitas.get(`${ev.id}:${data}`);
+      saida.push({
+        eventId: ev.id,
+        date: data,
+        title: ev.title,
+        time: ev.time,
+        location: ev.location,
+        notes: ev.notes,
+        kind: ev.kind || 'evento',
+        shared: !!ev.shared,
+        assignee: ev.assignee || '',
+        amount: ev.amount ?? null,
+        payee: ev.payee || '',
+        estimated: !!ev.estimated,
+        recurrence: ev.recurrence || '',
+        recorrencia: descreverRecorrencia(ev),
+        parcela: parcelaDe(ev, data),
+        // Repetido só na primeira ocorrência da série? Não: a data é a
+        // identidade aqui, e é ela que o casal marca como feita.
+        done: !!feita,
+        doneBy: feita?.done_by || null,
+        paidAmount: feita?.amount ?? null,
+      });
+    }
+  }
+  return saida.sort((a, b) => a.date.localeCompare(b.date)
+    || (a.time === '' ? 1 : 0) - (b.time === '' ? 1 : 0)
+    || a.time.localeCompare(b.time));
+}
+
+app.get('/api/agenda', withCouple, (req, res) => {
+  const de = isDate(req.query.de) ? req.query.de : hojeISO();
+  const ate = isDate(req.query.ate) ? req.query.ate : somaDiasIso(de, 60);
+  if (ate < de) return res.status(400).json({ error: 'Janela de datas inválida' });
+  res.json({ ocorrencias: ocorrenciasDe(req.couple.id, de, ate) });
+});
+
+// Marcar/desmarcar uma ocorrência: "paguei o aluguel deste mês", "fiz a faxina
+// desta terça". Só esta data — nunca a série inteira.
+app.post('/api/agenda/:eventId/:date', withCouple, (req, res) => {
+  const { eventId, date } = req.params;
+  if (!isDate(date)) return res.status(400).json({ error: 'Data inválida' });
+  const ev = db.listEvents(req.couple.id).find((e) => e.id === Number(eventId));
+  if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
+  if (!ocorrenciasEntre(ev, date, date).length) {
+    return res.status(400).json({ error: 'Esse evento não acontece nessa data' });
+  }
+
+  if (req.body?.done === false) {
+    db.desmarcarOcorrencia(req.couple.id, Number(eventId), date);
+  } else {
+    // Pagou diferente do previsto? Vale o que foi pago, não o que se estimou.
+    const valor = req.body?.amount === undefined || req.body?.amount === null || req.body?.amount === ''
+      ? (ev.amount ?? null) : Number(req.body.amount);
+    db.marcarOcorrencia(req.couple.id, Number(eventId), date, { email: req.user.email, amount: valor });
+  }
+  res.json({ ocorrencias: ocorrenciasDe(req.couple.id, date, date) });
+});
+
+// Fechamento do mês: o que vence, o que já foi pago e pra onde o dinheiro vai.
+app.get('/api/contas', withCouple, (req, res) => {
+  const mes = /^\d{4}-\d{2}$/.test(String(req.query.mes || '')) ? req.query.mes : hojeISO().slice(0, 7);
+  const de = `${mes}-01`;
+  const ate = `${mes}-${String(new Date(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0).getDate()).padStart(2, '0')}`;
+  const contas = ocorrenciasDe(req.couple.id, de, ate).filter((o) => o.kind === 'conta' && o.amount !== null);
+
+  const soma = (lista) => lista.reduce((t, o) => t + (o.done ? (o.paidAmount ?? o.amount) : o.amount), 0);
+  const pagas = contas.filter((o) => o.done);
+  const abertas = contas.filter((o) => !o.done);
+
+  // Pra onde vai o dinheiro: aluguel, diarista, parcela. Ordenado pelo que pesa.
+  const porDestino = [...contas.reduce((mapa, o) => {
+    const chave = o.payee || 'Sem destino';
+    const atual = mapa.get(chave) || { destino: chave, total: 0, pago: 0, quantos: 0 };
+    atual.total += o.done ? (o.paidAmount ?? o.amount) : o.amount;
+    if (o.done) atual.pago += o.paidAmount ?? o.amount;
+    atual.quantos++;
+    return mapa.set(chave, atual);
+  }, new Map()).values()].sort((a, b) => b.total - a.total);
+
+  res.json({
+    mes,
+    total: soma(contas),
+    pago: soma(pagas),
+    aberto: soma(abertas),
+    // Estimativa contamina o total: a interface precisa poder dizer "~".
+    temEstimativa: contas.some((o) => o.estimated),
+    contas,
+    porDestino,
+  });
+});
+
 app.get('/api/events', withCouple, (req, res) => {
   res.json({ events: db.listEvents(req.couple.id) });
 });
 app.post('/api/events', withCouple, (req, res) => {
-  const { title, date, time, notes, location, shared } = req.body || {};
+  const { title, date, time } = req.body || {};
   if (!title?.trim() || !isDate(date) || !isTime(time)) return res.status(400).json({ error: 'Informe título e data válida' });
-  res.json({ event: db.createEvent(req.couple.id, req.user.email, { title: title.trim(), date, time: time || '', notes, location, shared: shared !== false }) });
+  res.json({ event: db.createEvent(req.couple.id, req.user.email, { ...req.body, title: title.trim(), time: time || '' }) });
 });
 app.patch('/api/events/:id', withCouple, (req, res) => {
   if (req.body?.date !== undefined && !isDate(req.body.date)) return res.status(400).json({ error: 'Data inválida' });
@@ -352,11 +462,11 @@ app.delete('/api/events/:id', withCouple, (req, res) => {
 });
 
 /* Listas */
-app.get('/api/lists', withCouple, (req, res) => res.json({ lists: db.listLists(req.couple.id) }));
+app.get('/api/lists', withCouple, (req, res) => res.json({ lists: db.listLists(req.couple.id, req.user.email) }));
 app.post('/api/lists', withCouple, (req, res) => {
-  const { title, icon, kind } = req.body || {};
+  const { title, icon, kind, theme } = req.body || {};
   if (!title?.trim()) return res.status(400).json({ error: 'Dê um nome à lista' });
-  res.json({ list: db.createList(req.couple.id, req.user.email, { title: title.trim(), icon, kind }) });
+  res.json({ list: db.createList(req.couple.id, req.user.email, { title: title.trim(), icon, kind, theme }) });
 });
 app.get('/api/lists/:id', withCouple, (req, res) => {
   const list = db.getList(req.couple.id, Number(req.params.id));
@@ -374,7 +484,7 @@ app.delete('/api/lists/:id', withCouple, (req, res) => {
 });
 app.post('/api/lists/:id/items', withCouple, (req, res) => {
   if (!req.body?.text?.trim()) return res.status(400).json({ error: 'Item vazio' });
-  const list = db.addItem(req.couple.id, Number(req.params.id), req.body.text.trim());
+  const list = db.addItem(req.couple.id, Number(req.params.id), req.body.text.trim(), req.body.assignee);
   if (!list) return res.status(404).json({ error: 'Lista não encontrada' });
   res.json({ list });
 });

@@ -77,6 +77,9 @@ jeito errado de construir isso.
 
 ### 1. Remédio de uso contínuo — **é o motor de compra recorrente, igual**
 
+_(Ficou mais barato agora: a agenda já tem repetição com estado por ocorrência,
+então "comprei o do mês" é a mesma marcação de uma conta paga.)_
+
 Caixa de 30 comprimidos dura 30 dias. Isso é exatamente o que o `lista.js` já
 faz: palpite inicial por item, aprendizado por mediana dos eventos
 "comprou"/"acabou", e o "ainda temos" ensinando a cadência. Um remédio é um
@@ -94,22 +97,23 @@ O que **precisa** ser diferente:
   renovar a prescrição — comprar sem receita na mão é a viagem perdida à
   farmácia.
 
-### 2. Consulta e checkup — **não é o motor de cadência**
+### 2. Consulta e checkup — **a base já está no app; falta o lembrete**
 
-Aqui a periodicidade é **prescrita**, não aprendida: dentista a cada 6 meses,
+A periodicidade aqui é **prescrita**, não aprendida: dentista a cada 6 meses,
 exame anual, retorno em 3 meses. Não há nada pra estimar a partir de evidência,
-e usar o motor de cadência aqui só produziria palpite errado com cara de
-inteligência.
+e usar o motor de cadência produziria palpite errado com cara de inteligência.
 
-Isso é evento recorrente — e o app já tem recorrência (`time_capsules` tem
-`recurrence`; a agenda tem eventos e feed `.ics`). O trabalho é de produto, não
-de algoritmo: um tipo de evento "saúde" com periodicidade, quem é o dono
-(um ou os dois), e o lembrete saindo com antecedência de marcar, não de ir —
-avisar no dia da consulta que era pra ter marcado não serve pra nada.
+Isso já existe: a agenda tem o tipo `saude`, repetição anual por padrão e dono
+do compromisso. O que **falta** é o que transforma registro em lembrete:
 
-**O gancho que faz isso valer a pena no Chamego e não numa agenda qualquer:**
-o par lembra o par. O app já tem o "Cutucar" pro check-in — "a Laura ainda não
-marcou o dentista" é a mesma mecânica, e é isso que uma agenda comum não faz.
+- **Antecedência de marcar, não de ir.** Avisar no dia da consulta que era pra
+  ter marcado não serve pra nada. O aviso precisa sair semanas antes.
+- **O par lembra o par.** É o gancho que uma agenda comum não tem: o app já
+  tem o "Cutucar" do check-in, e "a Laura ainda não marcou o dentista" é a
+  mesma mecânica.
+
+O motor de repetição (`backend/agenda/recorrencia.js`) já dá as datas; o que
+não existe é quem olha pra elas e avisa.
 
 ### 3. A decisão travada antes de escrever qualquer código: privacidade
 
