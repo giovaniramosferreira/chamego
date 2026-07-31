@@ -15,6 +15,12 @@ export const CADENCIA_PADRAO = {
   presunto: 8, queijo: 10, 'carne moida': 10, batata: 12, ovo: 12, cebola: 14,
   cenoura: 14, macarrao: 20, cafe: 20, manteiga: 25, feijao: 25, arroz: 30,
   alho: 30, farinha: 40, acucar: 40, oleo: 45, sal: 90,
+  // Ingredientes dos pratos que o casal marcou como favoritos: sem palpite
+  // aqui, todos cairiam no padrão de 14 dias e a lista erraria feio no que
+  // eles mais compram.
+  vagem: 7, bife: 8, salsicha: 10, 'pao de hamburguer': 10, 'pao de hot dog': 10,
+  mussarela: 12, salmao: 14, bacon: 12, 'creme de leite': 30, kimchi: 30,
+  'batata palha': 30, 'massa de lasanha': 45, 'farinha de rosca': 60,
   // Casa também acaba, e a lista é a mesma.
   'papel higienico': 21, detergente: 20, esponja: 20, 'sabao em po': 30,
   amaciante: 40, desinfetante: 45, 'saco de lixo': 30, 'papel toalha': 25,

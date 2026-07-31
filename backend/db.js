@@ -278,6 +278,21 @@ const SCHEMA = [
     notas TEXT DEFAULT '',
     criado_em TEXT DEFAULT (datetime('now'))
   )`,
+  // Receita que veio de um link. Nasce 'pendente': é rascunho de IA e só vira
+  // receita de verdade quando alguém do casal aprova. O UNIQUE na URL evita a
+  // lista virar depósito do mesmo link mandado três vezes.
+  `CREATE TABLE IF NOT EXISTS recipe_finds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    couple_id INTEGER NOT NULL REFERENCES couples(id),
+    user_email TEXT NOT NULL,
+    url TEXT NOT NULL,
+    titulo TEXT NOT NULL DEFAULT '',
+    dados TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pendente'
+      CHECK (status IN ('pendente','salva','descartada')),
+    criado_em TEXT DEFAULT (datetime('now')),
+    UNIQUE (couple_id, url)
+  )`,
   `CREATE TABLE IF NOT EXISTS photo_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     couple_id INTEGER NOT NULL REFERENCES couples(id),
@@ -1177,6 +1192,51 @@ export function createDb(file) {
       return sqlite.prepare(`SELECT * FROM spins WHERE couple_id=? AND user_email!=? AND desfecho='pendente'
         AND criado_em >= datetime('now','-6 hours') ORDER BY id DESC LIMIT 1`).get(coupleId, email) || null;
     },
+    /* Receitinhas achadas: rascunhos vindos de link. */
+    createFind(coupleId, email, { url, receita }) {
+      const existente = sqlite.prepare('SELECT * FROM recipe_finds WHERE couple_id=? AND url=?').get(coupleId, url);
+      if (existente) return { find: this._find(existente), repetido: true };
+      const r = sqlite.prepare('INSERT INTO recipe_finds (couple_id, user_email, url, titulo, dados) VALUES (?, ?, ?, ?, ?)')
+        .run(coupleId, email, url, receita.titulo, JSON.stringify(receita));
+      return { find: this.find(coupleId, Number(r.lastInsertRowid)), repetido: false };
+    },
+    _find(linha) {
+      if (!linha) return null;
+      let dados = {};
+      try { dados = JSON.parse(linha.dados); } catch { /* rascunho corrompido = vazio */ }
+      // O id da receita carrega a origem: 'casal-7' nunca colide com o catálogo
+      // e diz de onde ela veio sem precisar de outra coluna.
+      return { ...linha, dados, receita: { ...dados, id: `casal-${linha.id}`, origem: 'casal' } };
+    },
+    find(coupleId, id) {
+      return this._find(sqlite.prepare('SELECT * FROM recipe_finds WHERE couple_id=? AND id=?').get(coupleId, id));
+    },
+    // Pendentes primeiro: a lista existe pra ser curada, não pra ser arquivo.
+    listFinds(coupleId, status = null) {
+      const linhas = status
+        ? sqlite.prepare('SELECT * FROM recipe_finds WHERE couple_id=? AND status=? ORDER BY id DESC').all(coupleId, status)
+        : sqlite.prepare(`SELECT * FROM recipe_finds WHERE couple_id=? AND status!='descartada'
+            ORDER BY (status='pendente') DESC, id DESC`).all(coupleId);
+      return linhas.map((l) => this._find(l));
+    },
+    setFindStatus(coupleId, id, status) {
+      const ok = sqlite.prepare('UPDATE recipe_finds SET status=? WHERE id=? AND couple_id=?')
+        .run(status, id, coupleId).changes > 0;
+      return ok ? this.find(coupleId, id) : null;
+    },
+    deleteFind(coupleId, id) {
+      return sqlite.prepare('DELETE FROM recipe_finds WHERE id=? AND couple_id=?').run(id, coupleId).changes > 0;
+    },
+    findsHoje(coupleId) {
+      return sqlite.prepare(`SELECT COUNT(*) c FROM recipe_finds
+        WHERE couple_id=? AND date(criado_em)=date('now','localtime')`).get(coupleId).c;
+    },
+    // As receitas aprovadas do casal, no formato do catálogo — é isso que
+    // entra na roda junto com as nossas.
+    receitasDoCasal(coupleId) {
+      return this.listFinds(coupleId, 'salva').map((f) => f.receita);
+    },
+
     photoSessionsHoje(coupleId) {
       return sqlite.prepare(`SELECT COUNT(*) c FROM photo_sessions
         WHERE couple_id=? AND date(criado_em)=date('now','localtime')`).get(coupleId).c;

@@ -33,13 +33,29 @@ const premium = (coupleId) => db.saveSubscription(coupleId, {
 
 /* ── Catálogo: as regras de conteúdo valem para todas ── */
 describe('catálogo curado', () => {
-  it('toda receita cabe numa quarta-feira: ≤8 ingredientes e ≤40 min', () => {
+  it('toda receita cabe na cabeça de quem está com fome: ≤8 ingredientes', () => {
     for (const r of RECEITAS) {
       expect(r.ingredientes.length, r.id).toBeLessThanOrEqual(8);
-      expect(r.tempoMin, r.id).toBeLessThanOrEqual(40);
       expect(r.passos.length, r.id).toBeGreaterThan(2);
       expect(r.ingredientes.every((i) => i.medida), r.id).toBe(true);
     }
+  });
+
+  // O prato de sábado é bem-vindo, desde que não se disfarce de jantar de
+  // quarta: quem passa de 45 min precisa das marcas que a roda usa pra
+  // empurrar a receita pro fim de semana.
+  it('prato longo não se vende como rápido', () => {
+    for (const r of RECEITAS.filter((x) => x.tempoMin > 45)) {
+      expect(r.tags, r.id).not.toContain('rapido');
+      expect(r.dificuldade, r.id).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  // A promessa da feature é a quarta às 20h. Se o catálogo virar um livro de
+  // fim de semana, a roda deixa de responder o caso que importa.
+  it('a maioria ainda resolve uma quarta-feira em 30 min', () => {
+    const rapidas = RECEITAS.filter((r) => r.tempoMin <= 30);
+    expect(rapidas.length).toBeGreaterThan(RECEITAS.length / 2);
   });
 
   it('usa medida de casa, não gramatura de precisão', () => {
