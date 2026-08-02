@@ -1220,13 +1220,14 @@ export function createDb(file) {
       }
       return itens;
     },
-    addPantryItem(coupleId, { name, canonico, qtd = '', origem = 'manual', comprouAgora = true }) {
+    addPantryItem(coupleId, { name, canonico, qtd = '', origem = 'manual', comprouAgora = true, cadenciaDias = null }) {
       const tx = sqlite.transaction(() => {
-        sqlite.prepare(`INSERT INTO pantry_items (couple_id, name, canonico, qtd, origem)
-          VALUES (?, ?, ?, ?, ?)
+        sqlite.prepare(`INSERT INTO pantry_items (couple_id, name, canonico, qtd, origem, cadencia_dias)
+          VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(couple_id, canonico) DO UPDATE SET
-            name=excluded.name, qtd=excluded.qtd, silenciado=0`)
-          .run(coupleId, String(name).slice(0, 60), canonico, String(qtd).slice(0, 30), origem);
+            name=excluded.name, qtd=excluded.qtd, silenciado=0,
+            cadencia_dias=COALESCE(excluded.cadencia_dias, pantry_items.cadencia_dias)`)
+          .run(coupleId, String(name).slice(0, 60), canonico, String(qtd).slice(0, 30), origem, cadenciaDias);
         const id = sqlite.prepare('SELECT id FROM pantry_items WHERE couple_id=? AND canonico=?').get(coupleId, canonico).id;
         // Entrar na despensa é, por padrão, um "comprou": é o evento que
         // começa a contar o ritmo daquele item.
@@ -1235,6 +1236,16 @@ export function createDb(file) {
       });
       const id = tx();
       return this.listPantry(coupleId).find((i) => i.id === id);
+    },
+    // Ajuste direto pelo casal, fora do fluxo de foto/feedback: quantidade e/ou
+    // duração digitadas na mão. `cadenciaDias` vira override de máxima confiança
+    // pro motor de `lista.js` (mesmo caminho que o feedback "ainda temos" usa).
+    updatePantryItem(coupleId, id, { qtd, cadenciaDias } = {}) {
+      const it = sqlite.prepare('SELECT 1 FROM pantry_items WHERE id=? AND couple_id=?').get(id, coupleId);
+      if (!it) return null;
+      if (qtd !== undefined) sqlite.prepare('UPDATE pantry_items SET qtd=? WHERE id=?').run(String(qtd).slice(0, 30), id);
+      if (cadenciaDias !== undefined) sqlite.prepare('UPDATE pantry_items SET cadencia_dias=? WHERE id=?').run(cadenciaDias, id);
+      return this.pantryItem(coupleId, id);
     },
     pantryItem(coupleId, id) {
       const it = sqlite.prepare('SELECT * FROM pantry_items WHERE id=? AND couple_id=?').get(id, coupleId);

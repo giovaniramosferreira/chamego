@@ -261,6 +261,45 @@ describe('despensa', () => {
     expect(new Set(res.body.opcoes.map((o) => o.receita.id)).size).toBe(res.body.opcoes.length);
     expect(res.body.opcoes[0].angulo).toBe('A mais rápida');
   });
+
+  it('confirmação com quantidade e duração grava os dois na despensa', async () => {
+    const { cookie, couple } = await newSpace();
+    const sessao = db.createPhotoSession(couple.id, [{ nome: 'tomate', confianca: 0.9 }]);
+    const res = await request(app).post(`/api/cozinha/foto/${sessao.id}/confirmar`).set('Cookie', cookie)
+      .send({ itens: [{ nome: 'tomate', qtd: '1 kg', cadenciaDias: 6 }] });
+
+    const item = res.body.itens.find((i) => i.canonico === 'tomate');
+    expect(item.qtd).toBe('1 kg');
+    expect(item.cadencia_dias).toBe(6);
+  });
+
+  it('duração fora de 1–180 na confirmação é ignorada, sem quebrar a entrada do item', async () => {
+    const { cookie, couple } = await newSpace();
+    const sessao = db.createPhotoSession(couple.id, [{ nome: 'sal', confianca: 0.9 }]);
+    const res = await request(app).post(`/api/cozinha/foto/${sessao.id}/confirmar`).set('Cookie', cookie)
+      .send({ itens: [{ nome: 'sal', cadenciaDias: 999 }] });
+
+    const item = res.body.itens.find((i) => i.canonico === 'sal');
+    expect(item).toBeTruthy();
+    expect(item.cadencia_dias).toBeFalsy();
+  });
+
+  it('PATCH /api/despensa/:id ajusta quantidade e duração na mão', async () => {
+    const { cookie, couple } = await newSpace();
+    await request(app).post('/api/despensa').set('Cookie', cookie).send({ itens: ['macarrão'] });
+    const id = db.listPantry(couple.id)[0].id;
+
+    const ok = await request(app).patch(`/api/despensa/${id}`).set('Cookie', cookie).send({ qtd: '2 pacote', cadenciaDias: 20 });
+    expect(ok.status).toBe(200);
+    expect(ok.body.item.qtd).toBe('2 pacote');
+    expect(ok.body.item.cadencia_dias).toBe(20);
+
+    const invalido = await request(app).patch(`/api/despensa/${id}`).set('Cookie', cookie).send({ cadenciaDias: 0 });
+    expect(invalido.status).toBe(400);
+
+    const deOutroCasal = await newSpace();
+    expect((await request(app).patch(`/api/despensa/${id}`).set('Cookie', deOutroCasal.cookie).send({ qtd: '1 un' })).status).toBe(404);
+  });
 });
 
 /* ── Lista de mercado que aprende ── */

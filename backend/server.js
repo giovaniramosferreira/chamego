@@ -1002,6 +1002,22 @@ app.delete('/api/despensa/:id', withCouple, (req, res) => {
   res.json({ ok: true });
 });
 
+// Ajuste manual de quantidade/duração — o casal sabe melhor que qualquer palpite.
+app.patch('/api/despensa/:id', withCouple, (req, res) => {
+  const patch = {};
+  if (req.body?.qtd !== undefined) patch.qtd = String(req.body.qtd).slice(0, 30);
+  if (req.body?.cadenciaDias !== undefined) {
+    const dias = Number(req.body.cadenciaDias);
+    if (!Number.isInteger(dias) || dias < 1 || dias > 180) {
+      return res.status(400).json({ error: 'Duração precisa ser um número de dias entre 1 e 180' });
+    }
+    patch.cadenciaDias = dias;
+  }
+  const item = db.updatePantryItem(req.couple.id, Number(req.params.id), patch);
+  if (!item) return res.status(404).json({ error: 'Item não encontrado' });
+  res.json({ item });
+});
+
 // Lista de mercado que se religa sozinha, com o motivo de cada item.
 app.get('/api/mercado/sugestoes', withCouple, (req, res) => {
   const ritmo = db.ritmoDeCozinha(req.couple.id);
@@ -1048,16 +1064,32 @@ app.post('/api/cozinha/foto', requireAuth, requireCouple, upload.single('foto'),
 });
 
 // O que o casal corrigiu vira despensa e dado de ajuste do prompt de visão.
+// Cada item pode vir como string pura (só nome, compatível com quem chama sem
+// quantidade/duração) ou objeto { nome, qtd, cadenciaDias } com o ajuste feito
+// na tela de confirmação.
 app.post('/api/cozinha/foto/:id/confirmar', withCouple, (req, res) => {
-  const confirmados = (Array.isArray(req.body?.itens) ? req.body.itens : [])
-    .map((n) => String(n || '').trim()).filter(Boolean).slice(0, 30);
-  db.confirmPhotoSession(req.couple.id, Number(req.params.id), confirmados);
+  const brutos = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  const confirmados = brutos
+    .map((it) => {
+      if (typeof it === 'string') return { nome: it.trim() };
+      if (!it || typeof it !== 'object') return null;
+      const nome = String(it.nome || '').trim();
+      if (!nome) return null;
+      const item = { nome };
+      if (it.qtd !== undefined) item.qtd = String(it.qtd).slice(0, 30);
+      const dias = Number(it.cadenciaDias);
+      if (Number.isInteger(dias) && dias >= 1 && dias <= 180) item.cadenciaDias = dias;
+      return item;
+    })
+    .filter((it) => it?.nome)
+    .slice(0, 30);
+  db.confirmPhotoSession(req.couple.id, Number(req.params.id), confirmados.map((it) => it.nome));
 
   const premium = isPremium(req.couple.id);
   const atuais = db.listPantry(req.couple.id).length;
   const cabe = premium ? confirmados : confirmados.slice(0, Math.max(0, DESPENSA_GRATIS - atuais));
-  for (const nome of cabe) {
-    db.addPantryItem(req.couple.id, { name: nome, canonico: normalizar(nome), origem: 'foto' });
+  for (const { nome, qtd, cadenciaDias } of cabe) {
+    db.addPantryItem(req.couple.id, { name: nome, canonico: normalizar(nome), origem: 'foto', qtd, cadenciaDias });
   }
   const despensa = db.listPantry(req.couple.id);
   res.json({

@@ -12,22 +12,32 @@ import fs from 'fs';
 
 const MODELO = 'claude-haiku-4-5-20251001';
 const MAX_ITENS = 25;
+const UNIDADES = ['kg', 'g', 'un', 'L', 'ml', 'pacote', 'duzia', 'maco'];
+const QTD_MIN = 0.1;
+const QTD_MAX = 50;
 
 export function visaoDisponivel() {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-const PROMPT = `Você recebe a foto de uma geladeira, bancada ou armário de cozinha no Brasil.
+const PROMPT = `Você recebe a foto de uma geladeira, bancada ou sacola de compras no Brasil
+(pode ser mercado, feira ou geladeira — mesma tarefa nos três casos).
 
 Liste APENAS os alimentos e bebidas que você realmente VÊ na imagem.
 
 Regras rígidas:
 - Devolva SÓ um JSON válido, sem texto antes ou depois.
-- Formato: {"itens":[{"nome":"cebola","confianca":0.9}]}
+- Formato: {"itens":[{"nome":"cebola","confianca":0.9,"quantidade":1,"unidade":"kg"}]}
 - "nome": em português brasileiro, no singular, como se escreve na lista de
   mercado ("leite", "peito de frango", "queijo mussarela").
 - "confianca": 0 a 1. Use ABAIXO de 0.5 quando a embalagem esconde o conteúdo,
   a imagem está escura ou o item aparece parcialmente.
+- "quantidade" e "unidade": um palpite pela proporção que aparece na imagem
+  (ex.: um punhado de tomates soltos ≈ "quantidade":1,"unidade":"kg"; uma caixa
+  de leite ≈ "quantidade":1,"unidade":"L"). Unidade é sempre uma destas:
+  ${UNIDADES.join(', ')}. Quando não der pra estimar peso ou volume, conte
+  unidades ("quantidade":6,"unidade":"un"). É só um ponto de partida — o casal
+  ajusta na hora de confirmar, então não precisa ser exato.
 - NÃO invente itens que não estão visíveis. É melhor devolver poucos itens
   certos do que muitos duvidosos.
 - Ignore o que não é comida: potes vazios, panos, ímãs, utensílios, pessoas.
@@ -91,6 +101,8 @@ export async function extrairIngredientes(caminhoArquivo, mimeType = 'image/jpeg
       .map((it) => ({
         nome: String(it.nome).trim().slice(0, 60),
         confianca: Math.min(1, Math.max(0, Number(it.confianca) || 0.5)),
+        quantidade: Math.min(QTD_MAX, Math.max(QTD_MIN, Number(it.quantidade) || 1)),
+        unidade: UNIDADES.includes(it.unidade) ? it.unidade : 'un',
       }));
 
     return { disponivel: true, itens };
