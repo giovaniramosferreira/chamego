@@ -144,6 +144,7 @@ export function listaDoDia(itens, { hoje, antecedencia = 2, cozinhadasUltimos7 =
       saida.push({
         id: item.id,
         nome: item.name,
+        qtd: item.qtd || '',
         urgencia: 'acabou',
         emDias: -Math.round(emDias(acabou, hoje)),
         motivo: 'vocês marcaram que acabou',
@@ -164,6 +165,7 @@ export function listaDoDia(itens, { hoje, antecedencia = 2, cozinhadasUltimos7 =
     saida.push({
       id: item.id,
       nome: item.name,
+      qtd: item.qtd || '',
       urgencia: faltam <= 0 ? 'acabando' : 'logo',
       emDias: faltam,
       motivo: faltam <= 0 ? `${comoSoube} — última compra há ${Math.round(emDias(comprou, hoje))}` : comoSoube,
