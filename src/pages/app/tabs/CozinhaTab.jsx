@@ -125,8 +125,8 @@ export default function CozinhaTab() {
 
       <p className="text-xs font-semibold tracking-[.15em] uppercase text-ink-3 mt-6 mb-2">Ou pelo que tem em casa</p>
       <RowList className="mb-4">
-        <Row icon="camera" title="Fotografar a geladeira"
-          sub={estado.visaoDisponivel ? 'A gente lê os ingredientes e vocês confirmam' : 'Modo manual: digite o que tem'}
+        <Row icon="camera" title="Fotografar compras"
+          sub={estado.visaoDisponivel ? 'A gente lê os itens e vocês confirmam' : 'Modo manual: digite o que tem'}
           onClick={() => nav('/app/despensa?foto=1')} />
         <Row icon="list" title="Despensa de vocês"
           sub={`${estado.despensa} ${estado.despensa === 1 ? 'item' : 'itens'} — melhora o sorteio`}

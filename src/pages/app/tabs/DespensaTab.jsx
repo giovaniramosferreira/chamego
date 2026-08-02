@@ -24,7 +24,10 @@ function formatarQtd(quantidade, unidade) {
 
 // Despensa + foto de compras. A confirmação editável é obrigatória: visão
 // computacional erra com embalagem opaca e luz ruim, e errar em silêncio faria
-// o app sugerir receita impossível.
+// o app sugerir receita impossível. Vale para a quantidade também: ela aparece
+// na linha do item mesmo com o painel fechado — o que vai ser gravado é sempre
+// o que está à vista. Item digitado à mão entra sem quantidade nenhuma; chutar
+// "1 un" para todo mundo seria inventar dado que ninguém estimou.
 export default function DespensaTab() {
   const nav = useNavigate();
   const { toast } = useToast();
@@ -78,7 +81,7 @@ export default function DespensaTab() {
         // Confiança baixa entra desmarcada: o padrão é não errar por nós.
         itens: (res.detectado || []).map((it) => ({
           nome: it.nome, marcado: it.confianca >= 0.5, confianca: it.confianca,
-          quantidade: it.quantidade || 1, unidade: it.unidade || 'un', cadenciaDias: '', aberto: false,
+          quantidade: it.quantidade ?? '', unidade: it.unidade || 'un', cadenciaDias: '', aberto: false,
         })),
       });
     } catch (err) {
@@ -95,7 +98,11 @@ export default function DespensaTab() {
 
   async function confirmar() {
     const marcados = confirmacao.itens.filter((i) => i.marcado).map((i) => {
-      const item = { nome: i.nome, qtd: formatarQtd(i.quantidade, i.unidade) };
+      const item = { nome: i.nome };
+      // Sem quantidade não manda campo nenhum: string vazia apagaria o que o
+      // casal já tinha ajustado nesse item em compras anteriores.
+      const qtd = formatarQtd(i.quantidade, i.unidade);
+      if (qtd) item.qtd = qtd;
       const dias = Number(i.cadenciaDias);
       if (Number.isInteger(dias) && dias >= 1 && dias <= 180) item.cadenciaDias = dias;
       return item;
@@ -113,8 +120,10 @@ export default function DespensaTab() {
   }
 
   async function salvarEdicao() {
-    const patch = { qtd: edicao.qtd.trim() };
-    if (edicao.cadenciaDias !== '') {
+    // Campo em branco é uma escolha, não ausência de resposta: apaga a
+    // quantidade e devolve a duração ao ritmo que o app aprende sozinho.
+    const patch = { qtd: edicao.qtd.trim(), cadenciaDias: null };
+    if (edicao.cadenciaDias.trim() !== '') {
       const dias = Number(edicao.cadenciaDias);
       if (!Number.isInteger(dias) || dias < 1 || dias > 180) {
         toast('Duração precisa ser um número de dias entre 1 e 180', { tone: 'error' });
@@ -207,7 +216,7 @@ export default function DespensaTab() {
               sub={item.silenciado ? 'silenciado' : [item.qtd, `${item.eventos.length} ${item.eventos.length === 1 ? 'registro' : 'registros'}`].filter(Boolean).join(' · ')}
               right={
                 <div className="flex gap-1">
-                  <button onClick={() => setEdicao({ id: item.id, qtd: item.qtd || '', cadenciaDias: item.cadencia_dias ? String(item.cadencia_dias) : '' })}
+                  <button onClick={() => setEdicao({ id: item.id, nome: item.name, qtd: item.qtd || '', cadenciaDias: item.cadencia_dias ? String(item.cadencia_dias) : '' })}
                     className="text-xs text-ink-2 px-2 py-1">editar</button>
                   <button onClick={() => feedback(item, 'acabou')} className="text-xs text-accent px-2 py-1">acabou</button>
                   <button onClick={async () => { await api(`/api/despensa/${item.id}`, { method: 'DELETE' }); carregar(); }}
@@ -230,7 +239,15 @@ export default function DespensaTab() {
             <Card className="!p-0 mb-3">
               {confirmacao.itens.map((it, idx) => (
                 <div key={`${it.nome}-${idx}`} className="border-b border-line last:border-0">
-                  <CheckRow done={it.marcado} text={it.nome}
+                  <CheckRow done={it.marcado}
+                    text={
+                      <>
+                        {it.nome}
+                        {formatarQtd(it.quantidade, it.unidade) && (
+                          <span className="text-ink-3"> · {formatarQtd(it.quantidade, it.unidade)}</span>
+                        )}
+                      </>
+                    }
                     right={
                       <div className="flex items-center gap-2">
                         {it.confianca < 0.5 && <span className="text-xs text-ink-3">incerto</span>}
@@ -242,12 +259,15 @@ export default function DespensaTab() {
                   {it.aberto && (
                     <div className="px-4 pb-3 -mt-1 flex flex-wrap items-center gap-2">
                       <div className="flex items-center gap-1">
-                        <button type="button" aria-label="Diminuir" onClick={() => atualizarItemConfirmacao(idx, { quantidade: Math.max(0.1, Number(it.quantidade) - 1) })}
-                          className="w-7 h-7 rounded-full shadow-[inset_0_0_0_1px_var(--line-2)] text-ink-2">−</button>
-                        <input type="number" step="0.1" min="0.1" value={it.quantidade}
+                        {/* Campo vazio quer dizer "não sei": o − não inventa 0,1 nem o
+                            + parte do nada — voltar ao vazio é sempre possível. */}
+                        <button type="button" aria-label="Diminuir" disabled={!Number(it.quantidade)}
+                          onClick={() => atualizarItemConfirmacao(idx, { quantidade: Math.max(1, Number(it.quantidade) - 1) })}
+                          className="w-7 h-7 rounded-full shadow-[inset_0_0_0_1px_var(--line-2)] text-ink-2 disabled:opacity-40">−</button>
+                        <input type="number" step="0.1" min="0" placeholder="—" value={it.quantidade}
                           onChange={(e) => atualizarItemConfirmacao(idx, { quantidade: e.target.value })}
                           className="w-14 text-center rounded-btn bg-surface px-1 py-1.5 shadow-[inset_0_0_0_1px_var(--line-2)] outline-none" />
-                        <button type="button" aria-label="Aumentar" onClick={() => atualizarItemConfirmacao(idx, { quantidade: Number(it.quantidade) + 1 })}
+                        <button type="button" aria-label="Aumentar" onClick={() => atualizarItemConfirmacao(idx, { quantidade: Math.floor(Number(it.quantidade)) + 1 })}
                           className="w-7 h-7 rounded-full shadow-[inset_0_0_0_1px_var(--line-2)] text-ink-2">+</button>
                         <select value={it.unidade} onChange={(e) => atualizarItemConfirmacao(idx, { unidade: e.target.value })}
                           className="rounded-btn bg-surface px-2 py-1.5 text-sm shadow-[inset_0_0_0_1px_var(--line-2)] outline-none">
@@ -267,7 +287,7 @@ export default function DespensaTab() {
           <Field label="Acrescentar" placeholder="cebola, queijo" value={texto} onChange={(e) => setTexto(e.target.value)} />
           <Btn block variant="ghost" className="mb-3" disabled={!texto.trim()} onClick={() => {
             const novos = texto.split(',').map((t) => t.trim()).filter(Boolean)
-              .map((nome) => ({ nome, marcado: true, confianca: 1, quantidade: 1, unidade: 'un', cadenciaDias: '', aberto: false }));
+              .map((nome) => ({ nome, marcado: true, confianca: 1, quantidade: '', unidade: 'un', cadenciaDias: '', aberto: false }));
             setConfirmacao((c) => ({ ...c, itens: [...c.itens, ...novos] }));
             setTexto('');
           }}>Adicionar à lista</Btn>
@@ -279,11 +299,14 @@ export default function DespensaTab() {
       )}
 
       {edicao && (
-        <Sheet title="Ajustar item" onClose={() => setEdicao(null)}>
-          <Field label="Quantidade" placeholder="1 kg, 6 un..." value={edicao.qtd}
+        <Sheet title={`Ajustar ${edicao.nome}`} onClose={() => setEdicao(null)}>
+          <Field label="Quantidade que vocês compram" placeholder="1 kg, 6 un..." value={edicao.qtd}
             onChange={(e) => setEdicao((d) => ({ ...d, qtd: e.target.value }))} />
           <Field label="Dura quantos dias" type="number" min="1" max="180" placeholder="ex.: 14" value={edicao.cadenciaDias}
             onChange={(e) => setEdicao((d) => ({ ...d, cadenciaDias: e.target.value }))} />
+          <p className="text-xs text-ink-3 -mt-2 mb-4">
+            Em branco, a gente aprende sozinho pelo ritmo de vocês.
+          </p>
           <Btn block onClick={salvarEdicao}>Salvar</Btn>
         </Sheet>
       )}
