@@ -1005,13 +1005,25 @@ app.delete('/api/despensa/:id', withCouple, (req, res) => {
 // Ajuste manual de quantidade/duração — o casal sabe melhor que qualquer palpite.
 app.patch('/api/despensa/:id', withCouple, (req, res) => {
   const patch = {};
-  if (req.body?.qtd !== undefined) patch.qtd = String(req.body.qtd).slice(0, 30);
-  if (req.body?.cadenciaDias !== undefined) {
-    const dias = Number(req.body.cadenciaDias);
-    if (!Number.isInteger(dias) || dias < 1 || dias > 180) {
-      return res.status(400).json({ error: 'Duração precisa ser um número de dias entre 1 e 180' });
+  if (req.body?.qtd !== undefined) {
+    if (typeof req.body.qtd !== 'string' && typeof req.body.qtd !== 'number') {
+      return res.status(400).json({ error: 'Quantidade inválida' });
     }
-    patch.cadenciaDias = dias;
+    patch.qtd = String(req.body.qtd).slice(0, 30);
+  }
+  if (req.body?.cadenciaDias !== undefined) {
+    // Limpar o campo devolve o item ao ritmo aprendido: sem caminho de volta, um
+    // palpite digitado uma vez calaria a evidência para sempre (`lista.js` trata
+    // cadencia_dias como confiança máxima).
+    if (req.body.cadenciaDias === null || req.body.cadenciaDias === '') {
+      patch.cadenciaDias = null;
+    } else {
+      const dias = Number(req.body.cadenciaDias);
+      if (!Number.isInteger(dias) || dias < 1 || dias > 180) {
+        return res.status(400).json({ error: 'Duração precisa ser um número de dias entre 1 e 180' });
+      }
+      patch.cadenciaDias = dias;
+    }
   }
   const item = db.updatePantryItem(req.couple.id, Number(req.params.id), patch);
   if (!item) return res.status(404).json({ error: 'Item não encontrado' });

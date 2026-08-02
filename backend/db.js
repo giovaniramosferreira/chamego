@@ -1225,7 +1225,11 @@ export function createDb(file) {
         sqlite.prepare(`INSERT INTO pantry_items (couple_id, name, canonico, qtd, origem, cadencia_dias)
           VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(couple_id, canonico) DO UPDATE SET
-            name=excluded.name, qtd=excluded.qtd, silenciado=0,
+            name=excluded.name, silenciado=0,
+            -- Entrada sem quantidade (o "ovo, leite, tomate" digitado) não pode
+            -- apagar o que o casal ajustou antes. Só sobrescreve quem trouxe
+            -- valor de verdade — mesma regra da cadência.
+            qtd=COALESCE(NULLIF(excluded.qtd, ''), pantry_items.qtd),
             cadencia_dias=COALESCE(excluded.cadencia_dias, pantry_items.cadencia_dias)`)
           .run(coupleId, String(name).slice(0, 60), canonico, String(qtd).slice(0, 30), origem, cadenciaDias);
         const id = sqlite.prepare('SELECT id FROM pantry_items WHERE couple_id=? AND canonico=?').get(coupleId, canonico).id;

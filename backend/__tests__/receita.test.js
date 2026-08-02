@@ -296,9 +296,52 @@ describe('despensa', () => {
 
     const invalido = await request(app).patch(`/api/despensa/${id}`).set('Cookie', cookie).send({ cadenciaDias: 0 });
     expect(invalido.status).toBe(400);
+    expect((await request(app).patch(`/api/despensa/${id}`).set('Cookie', cookie).send({ qtd: { a: 1 } })).status).toBe(400);
 
     const deOutroCasal = await newSpace();
     expect((await request(app).patch(`/api/despensa/${id}`).set('Cookie', deOutroCasal.cookie).send({ qtd: '1 un' })).status).toBe(404);
+  });
+
+  // Sem caminho de volta, um palpite digitado uma vez calaria a evidência pra
+  // sempre: `estimarCadencia` trata cadencia_dias como confiança máxima.
+  it('limpar a duração devolve o item ao ritmo aprendido', async () => {
+    const { cookie, couple } = await newSpace();
+    await request(app).post('/api/despensa').set('Cookie', cookie).send({ itens: ['iogurte'] });
+    const id = db.listPantry(couple.id)[0].id;
+
+    await request(app).patch(`/api/despensa/${id}`).set('Cookie', cookie).send({ cadenciaDias: 30 });
+    expect(db.pantryItem(couple.id, id).cadencia_dias).toBe(30);
+
+    for (const vazio of [null, '']) {
+      await request(app).patch(`/api/despensa/${id}`).set('Cookie', cookie).send({ cadenciaDias: 30 });
+      const res = await request(app).patch(`/api/despensa/${id}`).set('Cookie', cookie).send({ cadenciaDias: vazio });
+      expect(res.status).toBe(200);
+      expect(res.body.item.cadencia_dias).toBe(null);
+    }
+  });
+
+  // O "ovo, leite, tomate" digitado não passa quantidade. Se ele sobrescrevesse,
+  // toda recompra apagaria o ajuste que o casal fez com a mão.
+  it('reentrada sem quantidade preserva o que o casal já tinha ajustado', async () => {
+    const { cookie, couple } = await newSpace();
+    await request(app).post('/api/despensa').set('Cookie', cookie).send({ itens: ['arroz'] });
+    const id = db.listPantry(couple.id)[0].id;
+    await request(app).patch(`/api/despensa/${id}`).set('Cookie', cookie).send({ qtd: '5 kg', cadenciaDias: 45 });
+
+    // de novo por texto (sem qtd) e de novo por foto (item como string pura)
+    await request(app).post('/api/despensa').set('Cookie', cookie).send({ itens: ['arroz'] });
+    const sessao = db.createPhotoSession(couple.id, [{ nome: 'arroz', confianca: 0.9 }]);
+    await request(app).post(`/api/cozinha/foto/${sessao.id}/confirmar`).set('Cookie', cookie).send({ itens: ['arroz'] });
+
+    const item = db.pantryItem(couple.id, id);
+    expect(item.qtd).toBe('5 kg');
+    expect(item.cadencia_dias).toBe(45);
+
+    // mas uma quantidade nova de verdade continua sobrescrevendo
+    const nova = db.createPhotoSession(couple.id, [{ nome: 'arroz', confianca: 0.9 }]);
+    await request(app).post(`/api/cozinha/foto/${nova.id}/confirmar`).set('Cookie', cookie)
+      .send({ itens: [{ nome: 'arroz', qtd: '2 kg' }] });
+    expect(db.pantryItem(couple.id, id).qtd).toBe('2 kg');
   });
 });
 
